@@ -124,6 +124,25 @@ rclone copy /opt/pokemon/pokemon.db b2:pokemon-backup/pokemon.db
 rclone ls b2:pokemon-backup/
 ```
 
+## 11. Run initial normalisation
+
+After the first scraper run completes (check `tail -f /opt/pokemon/logs/scraper.log`), map the scraped raw names to canonical product names:
+
+```bash
+cd /opt/pokemon
+venv/bin/python -m scraper.normaliser export
+```
+
+Paste `pending_names.json` into a Claude session using the prompt in `docs/normalisation-runbook.md`, save the output as `mappings.json`, then import:
+
+```bash
+venv/bin/python -m scraper.normaliser import mappings.json
+```
+
+See `docs/normalisation-runbook.md` for the full procedure, including the recommended Claude prompt, expected output, and how to verify the import worked.
+
+Run this step before the first digest fires so alerts only surface named products.
+
 ## Ongoing operations
 
 | Task | Command |

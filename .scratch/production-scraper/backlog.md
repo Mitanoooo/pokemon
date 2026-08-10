@@ -6,6 +6,9 @@ Known issues and deferred work that don't yet have a ticket.
 
 ## Operator tasks
 
+### [#16] Run email setup script on server
+`scripts/setup_email.py` is built and tested but has not been run on the production server. SSH in, run `venv/bin/python scripts/setup_email.py`, confirm the test email arrives, then verify `grep GMAIL /opt/pokemon/.env` shows real credentials. See `.scratch/production-scraper/issues/16-run-email-setup-on-server.md` for the full checklist.
+
 ### Run normalisation pass
 Once the scraper has produced a full set of readings post-deployment, run the normalisation pipeline to map raw product names to canonical sealed-product identifiers. This should be done before the digest is enabled so the digest only surfaces normalised products.
 
