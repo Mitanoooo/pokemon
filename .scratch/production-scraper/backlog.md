@@ -4,6 +4,16 @@ Known issues and deferred work that don't yet have a ticket.
 
 ---
 
+## Operator tasks
+
+### Run normalisation pass
+Once the scraper has produced a full set of readings post-deployment, run the normalisation pipeline to map raw product names to canonical sealed-product identifiers. This should be done before the digest is enabled so the digest only surfaces normalised products.
+
+### Multi-path site audit (agentic browser + Copilot)
+Make a pass through every enabled site config using an agentic browser session to check whether the site has multiple relevant category paths that should each be scraped — e.g. separate pages for boosters, booster boxes, blisters, ETBs, tins, elite trainer boxes. Currently each config has a single `source_url`. Sites that split their sealed catalog across several category URLs need either multiple configs or a comma-separated URL list (depending on what the runner supports at that point). Use Copilot in agentic mode to navigate each site and note additional paths; update configs or create follow-up tickets from the findings.
+
+---
+
 ## Code gaps
 
 ### Runner: no test for all-None-price page with further pages remaining
