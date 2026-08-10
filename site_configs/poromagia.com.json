@@ -1,0 +1,20 @@
+{
+  "site_name": "Poromagia",
+  "source_url": "https://poromagia.com/fi/catalogue/category/pokemon/pokemon-tuotepakkaukset/pokemon-boosterit_385/",
+  "method": "css",
+  "selectors": {
+    "product_container": "article.product_line",
+    "product_name": "h3 a",
+    "price": ".price_color",
+    "in_stock": ".instock.availability",
+    "product_url": "h3 a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": "a[href*=\"?page=\"]",
+    "url_pattern": "https://poromagia.com/fi/catalogue/category/pokemon/pokemon-tuotepakkaukset/pokemon-boosterit_385/?page={page}",
+    "max_pages": 4
+  },
+  "confidence": "high",
+  "notes": "Page shows a 6-item 'SUOSITTUA TÄSSÄ KATEGORIASSA' (popular) widget using a different markup (article.product_pod) ABOVE the real listing — ignore that widget. The real listing ('76 osumaa - näytetään 1 - 20') uses article.product_line and is paginated 20/page across 4 pages (?page=1..4)."
+}

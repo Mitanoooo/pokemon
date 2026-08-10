@@ -1,0 +1,20 @@
+{
+  "site_name": "Pelimies",
+  "source_url": "https://pelimies.fi/pokemon-tcg-trading-card-game-tuotteet/",
+  "method": "css",
+  "selectors": {
+    "product_container": ".product",
+    "product_name": ".woocommerce-loop-product__title",
+    "price": ".price .woocommerce-Price-amount",
+    "in_stock": null,
+    "product_url": "a.woocommerce-loop-product__link"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "medium",
+  "notes": "WooCommerce theme, 41 products all rendered on a single page (no pagination or load-more control found). Price format '49.90 €' (note: dot decimal separator, not comma, unlike most other Finnish shops). No out-of-stock class or text found among the products currently listed — could not confirm inverted/normal stock logic since no out-of-stock example was observed; scraper should treat presence of the .add_to_cart_button (ajax_add_to_cart) as a proxy for in-stock if needed. Note the container's class attribute has a stray literal comma (e.g. 'product tag-248, tag-478 tag-latest_new') — use the base '.product' class only, not compound selectors on the tag-* classes."
+}

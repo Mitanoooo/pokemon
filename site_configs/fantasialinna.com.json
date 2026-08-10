@@ -1,0 +1,20 @@
+{
+  "site_name": "Fantasialinna",
+  "source_url": "https://www.fantasialinna.com/verkkokauppa/pokemon-1",
+  "method": "css",
+  "selectors": {
+    "product_container": "div.products-listing div.item",
+    "product_name": ".name h2",
+    "price": ".price .current",
+    "in_stock": ".in-stock",
+    "product_url": ".name a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": null,
+    "url_pattern": "https://www.fantasialinna.com/verkkokauppa/pokemon-1?page={page}",
+    "max_pages": 6
+  },
+  "confidence": "high",
+  "notes": "CS-Cart platform. Page shows numbered pagination 1-6 confirmed via visible page links (?page=2..6). Price is split into currency symbol and number spans (<span itemprop=\"priceCurrency\">€</span><span itemprop=\"price\" content=\"49.90\">49.90</span>) inside .price .current - concatenate or use the itemprop=price content attribute for a clean numeric value. Stock text is 'Varastossa' (in stock); out-of-stock items would presumably use a different class (not observed - a 'Loppuneet tuotteet' filter checkbox exists to include/exclude sold-out items, defaulting to include them, but only in-stock items appeared on page 1)."
+}

@@ -1,0 +1,20 @@
+{
+  "site_name": "Blockhouse Games",
+  "source_url": "https://blockhousegames.net/collections/pokemon-tcg",
+  "method": "css",
+  "selectors": {
+    "product_container": "div.product-item.product-item--vertical",
+    "product_name": ".product-item__title",
+    "price": ".product-item__price-list .price",
+    "in_stock": ".product-item__inventory",
+    "product_url": ".product-item__title"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": null,
+    "url_pattern": "?page={page}",
+    "max_pages": 2
+  },
+  "confidence": "medium",
+  "notes": "Shopify (Impulse-family) theme, requests+BS4 works — 29 products across 2 pages (page 1 has no ?page=1 suffix). Price element contains a 'visually-hidden' prefix span (Alennushinta/Normaalihinta) before the amount, e.g. '€59,90 EUR' — strip the hidden-label text. Confirmed in-stock classes: inventory--high and inventory--low, both mean in stock, text like 'Saatavilla 49' or 'Vain 1 jäljellä'. One product was observed as sold out ('Loppuunmyyty') via live browser render but the same product's static HTML fetch (curl) a few minutes later did not include it at all in the 24/29 listing — could not confirm in raw HTML whether sold-out items keep the .product-item__inventory span with different text or drop it entirely. Scraper should treat products missing .product-item__inventory as out of stock, but this needs live validation against an actual out-of-stock item before trusting it."
+}

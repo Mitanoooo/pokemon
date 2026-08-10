@@ -1,0 +1,20 @@
+{
+  "site_name": "JR Kodintavaratalo",
+  "source_url": "https://kodintavaratalo.fi/pokemon",
+  "method": "css",
+  "selectors": {
+    "product_container": "div.card.item-widget",
+    "product_name": "h5.card-title.item-brand",
+    "price": "strong.normal-price",
+    "in_stock": null,
+    "product_url": "a.item-link"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "medium",
+  "notes": "24 products, all on one page (no pagination element found after the .item-grid container). No out-of-stock indicator observed anywhere in the markup — every one of the 24 cards has an identical 'Lisää ostoskoriin' add-to-cart form, so stock status cannot be detected from this listing page; would need to check the product detail page for a stock/availability marker instead. Price is plain '37,95 €' format inside strong.normal-price — no cleanup needed."
+}

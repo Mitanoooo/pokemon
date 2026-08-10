@@ -1,0 +1,20 @@
+{
+  "site_name": "Muovi ja Lelu",
+  "source_url": "https://www.muovijalelu.fi/?s=pokemon&post_type=product",
+  "method": "css",
+  "selectors": {
+    "product_container": ".product-small.type-product",
+    "product_name": ".product-title a",
+    "price": ".woocommerce-Price-amount",
+    "in_stock": "p.stock.in-stock",
+    "product_url": ".product-title a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": null,
+    "url_pattern": "https://www.muovijalelu.fi/page/{page}/?s=pokemon&post_type=product",
+    "max_pages": 2
+  },
+  "confidence": "high",
+  "notes": "WooCommerce/Woodmart theme search results page, 35 products across 2 pages (page-numbers nav confirms last page = 2). Price format '6,95 €' inside a nested woocommerce-Price-amount span with a <bdi>. Stock status uses a WooCommerce custom-stock-status plugin: nested <p class='stock in-stock ...'>Varastossa</p> for in-stock (out-of-stock variant would presumably be 'stock out-of-stock' with text 'Ei varastossa', not observed among sampled products but the class name pattern is standard WooCommerce). The container div itself also carries a plain 'instock'/'outofstock' class as a fallback signal if the nested <p> selector proves unreliable. A cookie-consent dialog and chat/newsletter iframes overlay the page but do not block the underlying product HTML from being read directly."
+}

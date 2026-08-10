@@ -1,0 +1,20 @@
+{
+  "site_name": "Elli Madelli",
+  "source_url": "https://www.ellimadelli.fi/collections/pokemon",
+  "method": "css",
+  "selectors": {
+    "product_container": ".productgrid--item",
+    "product_name": ".productitem--title a",
+    "price": ".productitem__price .price__current--min",
+    "in_stock": ".product-stock-level--high, .product-stock-level--low",
+    "product_url": ".productitem--title a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": ".pagination--item",
+    "url_pattern": "https://www.ellimadelli.fi/collections/pokemon?page={page}&grid_list=grid-view",
+    "max_pages": 6
+  },
+  "confidence": "high",
+  "notes": "Shopify theme (Impulse/Prestige-style stock widget). No sold-out products observed on this page, so the exact 'out of stock' variant of .product-stock-level--<level> couldn't be confirmed — only --high and --low were seen. Pagination confirmed via visible page links 1-6."
+}

@@ -1,0 +1,20 @@
+{
+  "site_name": "Muovitukku",
+  "source_url": "https://www.muovitukku.fi/tuote-osasto/lelut/sisalelut/pokemon/",
+  "method": "css",
+  "selectors": {
+    "product_container": "div.tuoteslideri-grid-item",
+    "product_name": ".tuoteslideri-title-link",
+    "price": ".tuoteslideri-price-value",
+    "in_stock": ".tuoteslideri-meta.is-green",
+    "product_url": ".tuoteslideri-title-link"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "medium",
+  "notes": "WooCommerce + Elementor, but the product grid on this category page is rendered by a custom 'tuoteslideri' (product slider/grid) widget rather than the standard WooCommerce ul.products markup - use .tuoteslideri-grid-item as the container, not .product/li.product. 30 products all loaded in the initial DOM on one page (no visible pagination controls or ?page= links found) so treated as a single page. Stock status uses colour-coded meta badges: span.tuoteslideri-meta.is-green (e.g. 'toimitus', 'Saatavilla myymälästä') = in stock/available; span.tuoteslideri-meta.is-red ('Ei saatavilla') = out of stock - both confirmed present in the sample. Price uses WooCommerce's standard .woocommerce-Price-amount markup nested inside .tuoteslideri-price-value, comma decimal separator with a non-breaking space before the € symbol."
+}

@@ -1,0 +1,20 @@
+{
+  "site_name": "Proshop",
+  "source_url": "https://www.proshop.fi/Pokemon?f~pokmon_type=kort-og-tilbehor&pre=0",
+  "method": "css",
+  "selectors": {
+    "product_container": "li.site-productlist-item",
+    "product_name": "h2[product-display-name]",
+    "price": ".site-currency-lg",
+    "in_stock": ".site-icon-stock-in",
+    "product_url": "a.site-product-link"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "high",
+  "notes": "Custom Danish/Nordic webshop platform (Proshop, used across DK/SE/FI). 21 products, all on one page (page shows '21 products' count, no pagination controls found). Stock logic NORMAL: '.site-icon-stock-in' class present = in stock ('Varastossa'); other stock-icon variants seen (site-icon-stock-comming = incoming/backorder, e.g. 'Tukkurilla, 3-6 arkipäivää') should be treated as NOT in stock for a simple in/out model. Price is '.site-currency-lg' (the customer-facing price); a second parenthesized price in '.hidden-xs' next to it is the ex-VAT/business price and should be ignored."
+}

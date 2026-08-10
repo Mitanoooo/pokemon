@@ -5,9 +5,11 @@ The normalisation workflow maps raw product names scraped from retailer pages to
 The workflow is:
 
 1. **Export** — dump all unmapped raw names from the database to a JSON file
-2. **Claude** — paste the file into a Claude session to get canonical name suggestions
+2. **Generate mappings** — run `scripts/build_canonical_mappings.py`, a heuristic script that adds canonical names automatically
 3. **Import** — load the mappings back into the database
 4. **Verify** — confirm the Unknowns page is clear and Products page is populated
+
+Step 2 used to be "paste `pending_names.json` into a Claude session" — that doesn't scale once the export runs into the thousands of names (most retailer Pokémon-category pages return a lot of non-TCG merchandise alongside real sealed products). `scripts/build_canonical_mappings.py` replaces that manual step: it recognises known set names, sealed-product types, and known merch keywords, and only emits a `canonical_name` when it's confident. Anything it can't confidently classify (plush, figures, Funko Pops, binders, sleeves, apparel, obscure/garbled listings, single cards, etc.) is deliberately left unmapped rather than guessed — it stays on the Unknowns page for a later incremental pass, exactly as intended by this workflow's incremental design (see "Re-running and incremental updates" below).
 
 ---
 
@@ -48,27 +50,46 @@ To write to a custom path (useful for incremental runs): `venv/bin/python -m scr
 
 ---
 
-## Step 2 — Send to Claude
+## Step 2 — Generate canonical name mappings
 
-Open a Claude session (claude.ai or the company AWS Bedrock deployment) and paste the following prompt, replacing `<paste JSON here>` with the full contents of `pending_names.json`:
-
-```
-You are helping me build a Pokémon sealed product price tracker.
-Below is a JSON array of raw product names scraped from Finnish retailer websites.
-For each entry, add a "canonical_name" field: a short, clean English name in the format
-"<Set Name> — <Product Type>", e.g. "Prismatic Evolutions — Elite Trainer Box".
-
-Rules:
-- Use the official English set name (not Finnish or abbreviated forms).
-- Product types: Booster Box, Booster Bundle, Elite Trainer Box, Tin, Blister Pack, Collection Box.
-- Strip retailer-specific prefixes like "Pokemon TCG:", "Pokémon TCG:", pack counts in parentheses, etc.
-- If two raw names refer to the same product, give them the same canonical_name.
-- Return only the JSON array with the added "canonical_name" field. No prose.
-
-<paste JSON here>
+```bash
+cd /opt/pokemon
+venv/bin/python scripts/build_canonical_mappings.py pending_names.json
 ```
 
-Claude will return the same JSON array with a `canonical_name` field added to each entry. Save it to `mappings.json` in the project root.
+This reads `pending_names.json` and writes `mappings.json` in the project root, printing a summary:
+
+```
+mapped: 494
+skipped (merch/non-sealed): 364
+skipped (no confident set/type match): 446
+
+unique canonical products: 165
+```
+
+How it decides a `canonical_name`:
+
+- **`SKIP_KEYWORDS`** — keywords that mean "this is merch, not a sealed TCG product" (plush, figures, Funko, binders, sleeves, apparel, puzzles, LEGO/Topps/MTG crossovers, etc.) — matching entries are left unmapped.
+- **`TYPE_PATTERNS`** — regexes that detect the sealed-product type (Booster Box, Booster Bundle, Elite Trainer Box, Tin, Blister Pack, Collection Box, plus real-world extensions the data needed: Booster Pack, Battle Deck, Build & Battle Box, Checklane Blister, Gift Box, etc.).
+- **`SET_NAMES`** — a curated, longest-match-first list of known Pokémon TCG expansion / product-line names (official English names, the 2026 "Mega Evolution" sub-sets, Pokémon GO, and known Japanese/S-Chinese exclusive print runs), plus `SET_NAME_ALIASES` to collapse spelling variants (e.g. "Paradoxrift" / "Paradox Rift") to one canonical spelling.
+- A few special cases for messy real-world formatting: a bracket regex that pulls the specific subset name out of `"... - <Subset> (<CODE>) - Booster ..."` listings (common on Japanese/Chinese exclusive prints) instead of falling back to a generic era name, and a dedicated case for the "First Partner Illustration Collection Series N" product line.
+
+An entry only gets a `canonical_name` when **both** a product type and a set name are confidently identified — if either is missing, it's left out of `mappings.json` and stays unmapped.
+
+### Reviewing / extending it
+
+Before importing, sanity-check the output — this script needs occasional tuning as new sets release or new retailers get scraped:
+
+```bash
+venv/bin/python scripts/build_canonical_mappings.py pending_names.json --dump-skipped-dir /tmp/norm
+```
+
+- Skim `mappings.json` (or group by `canonical_name`) for anything that looks wrong — e.g. a generic era name swallowing a specific sub-set, or two spellings of the same set producing two different canonical names. Fix by adding an entry to `SET_NAME_ALIASES`, or making an existing `SET_NAMES` entry more specific / reordering it (entries are matched in list order, so put more specific names before generic ones).
+- Skim `/tmp/norm/skipped_no_match.txt` (things that *do* look like real sealed products but weren't recognised) for new set names or product-type wording to add to `SET_NAMES` / `TYPE_PATTERNS`, then re-run the script.
+- `/tmp/norm/skipped_merch.txt` should be almost entirely genuine non-sealed merchandise — if real sealed products show up there, remove/narrow the `SKIP_KEYWORDS` entry that caught them.
+- It's fine — expected, even — to leave a large chunk unmapped on any given run. Only import what you're confident about; the rest is still there next time via `export`.
+
+If you'd rather have an LLM take a pass at the ones the script skipped (e.g. hand this off to a Claude session), export just `skipped_no_match.txt`'s raw names and use the same rules as the script: format `"<Set Name> — <Product Type>"`, official English set names, same product-type list. Merge its output into `mappings.json` before importing.
 
 ---
 
@@ -87,7 +108,7 @@ aliases created: 47, products created: 23, skipped: 0
 
 - **aliases created** — raw names successfully mapped
 - **products created** — new canonical products inserted into `products`
-- **skipped** — entries where the raw name had no matching `price_readings` row (Claude-invented names that were never scraped), or where the alias already existed
+- **skipped** — entries where the raw name had no matching `price_readings` row (shouldn't happen with `build_canonical_mappings.py` output, since it only maps names taken directly from the export — but can happen with hand-edited/LLM-invented mappings), or where the alias already existed
 
 A non-zero `skipped` count is normal and harmless.
 
@@ -112,6 +133,7 @@ The import is **idempotent**: re-running with the same file produces `skipped: N
 For incremental updates (new raw names from a later scraper run):
 
 1. Run `venv/bin/python -m scraper.normaliser export new_names.json` — only names with no existing alias are exported.
-2. Repeat the Claude and import steps with `new_names.json`.
+2. Run `venv/bin/python scripts/build_canonical_mappings.py new_names.json --mappings-out new_mappings.json`.
+3. Repeat the import step with `new_mappings.json`.
 
-Already-mapped names are never re-exported.
+Already-mapped names are never re-exported. Each incremental run is also a good opportunity to check whether `scripts/build_canonical_mappings.py`'s `SET_NAMES`/`TYPE_PATTERNS` need updating for newly-released sets before generating the mappings.

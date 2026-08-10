@@ -1,0 +1,20 @@
+{
+  "site_name": "Lelukauppa Partanen",
+  "source_url": "https://lelupartanen.fi/category/202/keraeilykortit-ja-kortit",
+  "method": "css",
+  "selectors": {
+    "product_container": "article[itemtype='https://schema.org/Product']",
+    "product_name": "[itemprop='name']",
+    "price": "[itemprop='Price']",
+    "in_stock": null,
+    "product_url": "a[itemprop='url']"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "medium",
+  "notes": "React/MUI SPA (class names are build-hashed, e.g. 'mui-8hxin9' — unstable, avoid using them; schema.org itemprop attributes are used instead and are stable). Page header claims '63 tuotetta' but only 60 article cards actually render in the DOM and neither scrolling to the bottom nor any load-more button/page-number link revealed the remaining 3 — no working pagination mechanism found via plain DOM/CSS inspection, so scraping will likely be capped at ~60 of 63 products unless a backing JSON/XHR API is found separately. Price is exposed twice: raw unformatted number via itemprop='Price' (e.g. '16.95', no currency symbol — easiest to parse) and a formatted '16,95 €' string in a plain <p> with no stable class. Stock text seen: 'Heti saatavilla' (in stock) and 'Vain Jyväskylän myymälässä' (store-pickup-only variant) — both in an unstyled <p>, no reliable stock class/attribute found, so in_stock left null."
+}

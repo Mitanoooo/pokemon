@@ -1,0 +1,20 @@
+{
+  "site_name": "MaxGaming",
+  "source_url": "https://www.maxgaming.fi/fi/pokemon",
+  "method": "css",
+  "selectors": {
+    "product_container": "div.PT_Wrapper",
+    "product_name": ".PT_Beskr",
+    "price": ".PT_PrisNormal",
+    "in_stock": ".Lager_1_FI",
+    "product_url": "a.PT_Lank"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": null,
+    "url_pattern": "https://www.maxgaming.fi/fi/pokemon?page={page}",
+    "max_pages": 4
+  },
+  "confidence": "high",
+  "notes": "Large general gaming retailer, Pokémon TCG is one category among many. 184 products total, 60 per page ('Näytetään 1-60 yhteensä 184 tuotteesta') => ~4 pages; a 'Seuraava »' link (href /fi/pokemon?page=2) confirms the ?page= query param pattern. product_name (.PT_Beskr) text includes a leading brand line 'Pokémon' plus the actual title on the next line - strip/split if only the title is wanted. Stock status uses a class-coded element .PT_text_Lagerstatus with a numeric 'Lager_N_FI' suffix: Lager_1_FI = 'Varastossa' (in stock), Lager_2_FI = 'Loppu varastosta', Lager_10_FI = 'Loppuunmyyty', Lager_12_FI = 'Tulossa pian' (all effectively not purchasable now) - in_stock selector targets the positive Lager_1_FI class specifically rather than absence of a badge."
+}

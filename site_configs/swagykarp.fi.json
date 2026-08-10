@@ -1,0 +1,20 @@
+{
+  "site_name": "Swagykarp",
+  "source_url": "https://swagykarp.fi/product-category/pokemon-tuotteet/boosterit/",
+  "method": "css",
+  "selectors": {
+    "product_container": "ul.products li.product",
+    "product_name": ".woocommerce-loop-product__title, h2.woocommerce-loop-product__title",
+    "price": "span.price",
+    "in_stock": null,
+    "product_url": "a.woocommerce-LoopProduct-link, a[href*='/product/']"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": null,
+    "url_pattern": "https://swagykarp.fi/product-category/pokemon-tuotteet/boosterit/page/{page}/",
+    "max_pages": 5
+  },
+  "confidence": "medium",
+  "notes": "Standard WooCommerce shop loop (54 products, 12/page = ~5 pages, 'Näytetään tulokset 1–12 / 54'). Selectors are the standard WooCommerce theme class names (li.product, .woocommerce-loop-product__title, span.price) confirmed by page content/markup patterns (add-to-cart query params, 'Lisää ostoskoriin' buttons) via fetch, but not verified against raw devtools HTML, hence medium confidence. Out-of-stock items show an overlay badge with text 'Loppu varastosta'/'Out of Stock' and their 'Lue lisää' link replaces the add-to-cart button - in_stock left null; treat presence of that badge text or the li carrying WooCommerce's 'outofstock' class as out-of-stock."
+}

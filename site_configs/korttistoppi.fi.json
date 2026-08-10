@@ -1,0 +1,20 @@
+{
+  "site_name": "Korttistoppi",
+  "source_url": "https://www.korttistoppi.fi/tuoteryhma/boosterit",
+  "method": "css",
+  "selectors": {
+    "product_container": ".product-card-grid-item",
+    "product_name": ".product-name-text",
+    "price": ".text-price",
+    "in_stock": null,
+    "product_url": "a[href*='/tuote/']"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "high",
+  "notes": "Finqu-hosted webshop platform. All 67 products render on a single page - the .pagination widget itself confirms 'Sivu 1 / 1'. Sold-out items show a badge <div class=\"product-badge product-badge-general\"><span class=\"product-badge-content\">Loppunut</span></div> inside .product-media-container; in_stock is left null since the reliable signal is the ABSENCE of that badge (badge text 'Loppunut' = out of stock) rather than a positive in-stock marker - treat presence of '.product-badge-content' with text 'Loppunut' within the container as out-of-stock."
+}

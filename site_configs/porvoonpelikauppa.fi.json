@@ -1,0 +1,20 @@
+{
+  "site_name": "Porvoon Pelikauppa",
+  "source_url": "https://porvoonpelikauppa.fi/pokemon-booster-laatikot-ja-bundlet",
+  "method": "css",
+  "selectors": {
+    "product_container": ".card.item-widget",
+    "product_name": ".card-title.item-brand",
+    "price": ".price .normal-price",
+    "in_stock": ".out-of-stock",
+    "product_url": "a.item-link"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "high",
+  "notes": "Custom Finnish webshop platform. All 30 products ('30 tuotetta' shown on page) render on a single page with no pagination controls. in_stock selector is inverted: presence of '.out-of-stock' (badge text 'Tilapäisesti loppu') means OUT of stock — absence of this element within the product container means in-stock."
+}

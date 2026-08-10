@@ -5,3 +5,10 @@ venv/
 .env
 *.db
 logs/
+
+# normalisation-runbook.md transient artifacts
+pending_names.json
+new_names.json
+mappings.json
+skipped_merch.txt
+skipped_no_match.txt

@@ -1,0 +1,20 @@
+{
+  "site_name": "TCG-kauppa",
+  "source_url": "https://www.tcgkauppa.fi/tuote-osasto/pokemon/pokemon-booster/",
+  "method": "css",
+  "selectors": {
+    "product_container": "li.product",
+    "product_name": "h3.product-title a",
+    "price": "span.price",
+    "in_stock": ".instock",
+    "product_url": "h3.product-title a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": "a.page-numbers",
+    "url_pattern": "https://www.tcgkauppa.fi/tuote-osasto/pokemon/pokemon-booster/page/{page}/",
+    "max_pages": 5
+  },
+  "confidence": "high",
+  "notes": "Standard WooCommerce (Avada/Fusion theme). Stock status is a WooCommerce class ('instock'/'outofstock') on the product_container li itself, not a separate nested element — check the container's own class list rather than querying '.instock' as a descendant. Page 1 has no /page/1/ suffix; pages 2-5 use /page/N/."
+}

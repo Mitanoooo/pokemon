@@ -1,0 +1,20 @@
+{
+  "site_name": "KaruKortti",
+  "source_url": "https://karukortti.fi/kategoria/booster-box",
+  "method": "css",
+  "selectors": {
+    "product_container": "a[data-selector=\"list-product-view\"]",
+    "product_name": "[data-selector=\"os-theme-product-list-name\"]",
+    "price": "[data-selector=\"os-theme-product-list-price-regular\"]",
+    "in_stock": ".product-sold-out-label",
+    "product_url": null
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "high",
+  "notes": "Custom Finnish shop platform (SumUp-hosted 'os-theme' storefront), server-rendered, requests+BS4 works cleanly. Only 8 products, 1 page — a <link rel=\"next\" href=\"...?page=2\"> is present in the <head> but ?page=2 returns zero products, so treat pagination as none. product_url has no separate selector needed: the product_container itself IS the <a> tag, its href attribute is the product link (absolute URL). in_stock is INVERTED — presence of .product-sold-out-label (text 'Loppuunmyyty') inside the container means OUT OF STOCK; absence means in stock. Confirmed working on both in-stock and sold-out products (6 of 8 products were sold out at time of check)."
+}

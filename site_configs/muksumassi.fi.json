@@ -1,0 +1,20 @@
+{
+  "site_name": "Muksumassi",
+  "source_url": "https://muksumassi.fi/kerailykortit/pokemon-boosterit/",
+  "method": "css",
+  "selectors": {
+    "product_container": "ul.products li.product",
+    "product_name": "h5 a",
+    "price": ".woocommerce-Price-amount",
+    "in_stock": null,
+    "product_url": "h5 a"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "high",
+  "notes": "Standard WooCommerce markup (Bricks builder theme) on top of a WooCommerce product loop, so class names like 'woocommerce-Price-amount' are reliable even though headings/wrappers use generic Bricks 'dynamic' classes. All 33 products render on one page ('Näytetään kaikki 33 tulosta') - no pagination. Stock status is NOT a descendant selector: WooCommerce puts 'instock' or 'outofstock' directly as a class on the li.product container itself, so in_stock is null here - check for presence of class 'instock' vs 'outofstock' on the product_container element."
+}

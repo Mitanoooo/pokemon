@@ -1,0 +1,20 @@
+{
+  "site_name": "Casagrande",
+  "source_url": "https://casagrande.fi/collections/pokemon",
+  "method": "css",
+  "selectors": {
+    "product_container": ".product-item",
+    "product_name": ".product-item-meta__title",
+    "price": ".price-list .price",
+    "in_stock": ".label--subdued",
+    "product_url": ".product-item-meta__title"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "high",
+  "notes": "Shopify theme. All 49 products render on a single collection page (no pagination controls found); the 'Seuraava'/next buttons detected are carousel arrows elsewhere on the page, not collection pagination. in_stock selector is inverted: presence of '.label--subdued' (badge text 'Tilapäisesti loppu') means OUT of stock, not in stock — treat absence of this element within the product container as in-stock."
+}
