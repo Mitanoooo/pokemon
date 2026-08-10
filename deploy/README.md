@@ -40,7 +40,16 @@ cp /opt/pokemon/.env.example /opt/pokemon/.env
 nano /opt/pokemon/.env
 ```
 
-Fill in `DB_PATH`, `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `DIGEST_TO`.
+Fill in `DB_PATH` manually, then run the interactive setup script to configure and validate the Gmail credentials:
+
+```bash
+cd /opt/pokemon
+venv/bin/python scripts/setup_email.py
+```
+
+The script prompts for `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `DIGEST_TO`, sends a test email to verify the credentials, then writes the values to `/opt/pokemon/.env` without touching other keys like `DB_PATH`.
+
+**Gmail App Password prerequisite:** 2-Factor Authentication must be enabled on the Google account. Generate an App Password at <https://myaccount.google.com/apppasswords>. Google displays it with spaces — the script strips them automatically.
 
 ## 5. Initialise the database
 
