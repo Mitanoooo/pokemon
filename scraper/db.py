@@ -268,6 +268,122 @@ def get_site_health(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ── categories page ──────────────────────────────────────────────────────────
+
+def get_all_categories(conn: sqlite3.Connection) -> list[dict]:
+    """Return all categories ordered by name."""
+    rows = conn.execute(
+        "SELECT id, name FROM categories ORDER BY name"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def add_category(conn: sqlite3.Connection, name: str) -> int:
+    """Insert a new category and return its id."""
+    cur = conn.execute("INSERT INTO categories (name) VALUES (?)", (name,))
+    conn.commit()
+    return cur.lastrowid
+
+
+def rename_category(conn: sqlite3.Connection, cat_id: int, new_name: str) -> None:
+    """Rename an existing category."""
+    conn.execute("UPDATE categories SET name = ? WHERE id = ?", (new_name, cat_id))
+    conn.commit()
+
+
+def get_all_canonical_products(conn: sqlite3.Connection) -> list[dict]:
+    """Return all products with a non-NULL canonical_name, ordered by name."""
+    rows = conn.execute(
+        "SELECT id, canonical_name, category_id FROM products WHERE canonical_name IS NOT NULL ORDER BY canonical_name"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_product_category(
+    conn: sqlite3.Connection, product_id: int, category_id: Optional[int]
+) -> None:
+    """Set products.category_id. Pass None to clear the category."""
+    conn.execute(
+        "UPDATE products SET category_id = ? WHERE id = ?",
+        (category_id, product_id),
+    )
+    conn.commit()
+
+
+# ── thresholds page ───────────────────────────────────────────────────────────
+
+def get_thresholds_for_all_products(conn: sqlite3.Connection) -> list[dict]:
+    """Return all canonical products with their current threshold (if any) and
+    the current lowest price across all sites."""
+    rows = conn.execute(
+        """
+        WITH latest AS (
+            SELECT product_id, site_id, price, currency,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY product_id, site_id
+                       ORDER BY scraped_at DESC
+                   ) AS rn
+            FROM price_readings
+            WHERE product_id IS NOT NULL
+        ),
+        cheapest_ranked AS (
+            SELECT product_id, price, currency,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY product_id ORDER BY price
+                   ) AS price_rank
+            FROM latest
+            WHERE rn = 1
+        ),
+        cheapest AS (
+            SELECT product_id, price AS lowest_price, currency
+            FROM cheapest_ranked
+            WHERE price_rank = 1
+        ),
+        latest_threshold AS (
+            SELECT product_id, price AS threshold_price, active,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY product_id ORDER BY id DESC
+                   ) AS rn
+            FROM thresholds
+        )
+        SELECT
+            p.id AS product_id,
+            p.canonical_name,
+            ch.lowest_price,
+            ch.currency,
+            lt.threshold_price,
+            lt.active AS threshold_active
+        FROM products p
+        LEFT JOIN cheapest ch ON ch.product_id = p.id
+        LEFT JOIN latest_threshold lt ON lt.product_id = p.id AND lt.rn = 1
+        WHERE p.canonical_name IS NOT NULL
+        ORDER BY p.canonical_name
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_threshold(
+    conn: sqlite3.Connection, product_id: int, price: float, active: bool
+) -> None:
+    """Upsert the threshold for a product — one row per product is maintained."""
+    existing = conn.execute(
+        "SELECT id FROM thresholds WHERE product_id = ? ORDER BY id DESC LIMIT 1",
+        (product_id,),
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE thresholds SET price = ?, active = ? WHERE id = ?",
+            (price, 1 if active else 0, existing["id"]),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO thresholds (product_id, price, active) VALUES (?, ?, ?)",
+            (product_id, price, 1 if active else 0),
+        )
+    conn.commit()
+
+
 # ── site health ───────────────────────────────────────────────────────────────
 
 def update_site_health(
