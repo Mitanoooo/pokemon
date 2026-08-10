@@ -1,4 +1,3 @@
 # Pokemon Price Tracker — all times UTC
 0 4,16 * * *  cd /opt/pokemon && venv/bin/python -m scraper >> logs/scraper.log 2>&1
 0 5 * * *     cd /opt/pokemon && venv/bin/python -m scraper.digest >> logs/digest.log 2>&1
-0 3 * * *     rclone copy /opt/pokemon/pokemon.db b2:pokemon-backup/pokemon.db
