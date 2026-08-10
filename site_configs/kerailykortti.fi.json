@@ -1,0 +1,20 @@
+{
+  "site_name": "Keräilykortti.fi",
+  "source_url": "https://www.xn--kerilykortti-icb.fi/englanti-pokemon-booster-pakkaukset/",
+  "method": "css",
+  "selectors": {
+    "product_container": "ul.products li.product",
+    "product_name": "h2.woocommerce-loop-product__title",
+    "price": "span.price",
+    "in_stock": null,
+    "product_url": "a.woocommerce-LoopProduct-link, h2.woocommerce-loop-product__title a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": null,
+    "url_pattern": "https://www.xn--kerilykortti-icb.fi/englanti-pokemon-booster-pakkaukset/page/{page}/",
+    "max_pages": 5
+  },
+  "confidence": "medium",
+  "notes": "Homepage (given URL) only shows curated carousels ('PARHAAT DIILIT NYT', 'UUSIMMAT', 'SUOSITUIMMAT', 'ARVOKKAAT') each ending in a 'Näytä lisää' link to /kauppa/?orderby=... - the actual full paginated catalog lives at https://www.xn--kerilykortti-icb.fi/kauppa/. Confirmed standard WooCommerce shop-loop markup (li.product, h2.woocommerce-loop-product__title, span.price with <del>/<ins> for sale prices, 'Lisää ostoskoriin' add-to-cart buttons, product URLs under /tuote/<slug>/). No explicit out-of-stock badge observed on this listing (only 'Ale!'/sale badges) so in_stock left null - recommend treating li.outofstock (WooCommerce's standard CSS class on the container) or absence of the add-to-cart button as the out-of-stock signal if verified on /kauppa/."
+}

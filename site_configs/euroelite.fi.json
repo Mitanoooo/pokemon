@@ -1,0 +1,22 @@
+{
+  "site_name": "Euro Elite Cards",
+  "source_url": "https://www.euroelite.fi/tuoteryhma/pokemon",
+  "method": "css",
+  "selectors": {
+    "product_container": ".product-card-grid-item",
+    "product_name": ".product-name-text",
+    "price": ".product-price .text-price",
+    "in_stock": ".product-stock-balance-in-stock",
+    "product_url": "a[href*='/tuote/']"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "disabled": true,
+  "disabled_reason": "Operator decision: drop this site (mixed content, only 9 products).",
+  "confidence": "high",
+  "notes": "9 products, single page (pagination widget confirms 'Sivu 1 / 1'). Price format '61,90 €'. Stock shown as 'Varastossa N kpl' inside .product-stock-balance-in-stock; out-of-stock variant not observed but likely a sibling class like .product-stock-balance-out-of-stock. Works cleanly, no JS-rendering issues encountered."
+}

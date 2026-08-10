@@ -1,0 +1,20 @@
+{
+  "site_name": "God of Cards",
+  "source_url": "https://godofcards.com/en-fi/collections/english-pokemon-cards?filter.v.availability=1",
+  "method": "css",
+  "selectors": {
+    "product_container": ".product-list product-card",
+    "product_name": ".product-card__title a",
+    "price": "sale-price",
+    "in_stock": null,
+    "product_url": ".product-card__title a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": "[data-load-more-button]",
+    "url_pattern": "https://godofcards.com/en-fi/collections/english-pokemon-cards?filter.v.availability=1&page={page}",
+    "max_pages": 24
+  },
+  "confidence": "medium",
+  "notes": "Shopify store using a custom web-component theme ('<product-card>', '<price-list>', '<sale-price>', '<compare-at-price>' custom elements). IMPORTANT: '<product-card>' (and its child classes like '.product-card__title') also appear duplicated inside a header navigation-preview widget near the top of the page, outside the actual collection grid — always scope selectors under '.product-list' (the collection grid container) to avoid picking up those nav-preview cards. Price: always read the nested '<sale-price>' element (shows the effective/current price whether discounted or not); a sibling '<compare-at-price>' (struck-through original price) appears additionally only when the item is on sale — ignore it. No stock/availability indicator was found on the collection grid card itself (in_stock left null) despite a sidebar 'In stock only' filter checkbox existing — would need the product detail page or that filter to determine real stock. Pagination is a JS 'Load more' infinite-scroll button (not classic numbered links), but its 'data-next-url' attribute confirms a working '?page={page}' URL fallback; confirmed 775 total products at ~33 per initial page load, so max_pages is an ESTIMATE (~24) not fully paged through and verified — treat with lower confidence than other selector fields."
+}

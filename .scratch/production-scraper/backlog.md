@@ -25,3 +25,5 @@ Known issues and deferred work that don't yet have a ticket.
 | Verkkokauppa.com (`verkkokauppa.com`) | Hashed styled-components class names unstable across deploys. No in-stock signal. | Identify stable data attributes; add in-stock detection before enabling. |
 | Hobby Hall (`hobbyhall.fi`) | Brand page mixes TCG + unrelated Pokemon merchandise. No stock signal. | Add a product-name filter to skip non-TCG items, or find a more targeted URL. |
 | Pokémon Center (`pokemoncenter.com`) | Imperva/hCaptcha blocks every request. All selectors null. | Needs official API, residential proxy service, or manual checking. Not viable with plain scraper. |
+| Spelexperten (`spelexperten.fi`) | ibutik platform, 346 mixed products, no sealed-only subcategory URL. | Dropped by operator (ticket 13). Could revisit if a sealed subcategory URL is found. |
+| Euro Elite Cards (`euroelite.fi`) | Mixed content, only 9 products total. Low value. | Dropped by operator (ticket 13). |

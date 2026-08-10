@@ -1,0 +1,22 @@
+{
+  "site_name": "Spelexperten",
+  "source_url": "https://www.spelexperten.fi/fi/seurapelit/pokemon",
+  "method": "css",
+  "selectors": {
+    "product_container": "div.PT_Wrapper",
+    "product_name": "div.PT_Beskr a",
+    "price": "span.PT_PrisNormal",
+    "in_stock": null,
+    "product_url": "div.PT_Beskr a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": "#visafler-paginering a[rel='nofollow']",
+    "url_pattern": "https://www.spelexperten.fi/fi/seurapelit/pokemon?page={page}",
+    "max_pages": 11
+  },
+  "disabled": true,
+  "disabled_reason": "346 products across all Pokémon — no sealed-only subcategory URL found on the ibutik platform. Operator decision: drop this site.",
+  "confidence": "high",
+  "notes": "Custom 'ibutik' Nordic webshop platform (same platform family serves multiple country-market subsites). Renders as plain static HTML — works with requests+BS4, no JS rendering needed. Confirmed 346 products total, 32 per page ('Näyttää 1-32 / 346 artikkeleita'), 11 pages via #visafler-paginering nav (page links go up to 11, plus a 'Seuraava'/next link). No stock/availability indicator exists anywhere in the listing markup — every product card shows an identical 'Osta!' (Buy) button regardless of real stock; would need the product detail page to determine stock. Price format is unusual for a Finnish site: '€7.55' (Euro symbol first, period as decimal separator) rather than the common '7,55 €' Finnish comma format — scraper's price parser must handle this distinct format for this site."
+}

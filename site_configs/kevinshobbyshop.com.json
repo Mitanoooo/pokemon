@@ -1,0 +1,20 @@
+{
+  "site_name": "Kevin's Hobby Shop",
+  "source_url": "https://kevinshobbyshop.com/shop/?yith_wcan=1&filter_game=pokemon&query_type_game=or&filter_product-type=sealed&query_type_product-type=or",
+  "method": "css",
+  "selectors": {
+    "product_container": "li.product.type-product",
+    "product_name": ".woocommerce-loop-product__title",
+    "price": "span.price .woocommerce-Price-amount",
+    "in_stock": null,
+    "product_url": ".woocommerce-LoopProduct-link"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": ".page-numbers",
+    "url_pattern": "/shop/page/{page}/?yith_wcan=1&filter_game=pokemon&query_type_game=or&filter_product-type=sealed&query_type_product-type=or",
+    "max_pages": 10
+  },
+  "confidence": "medium",
+  "notes": "Standard WooCommerce (Neve/Nova theme) with a YITH WooCommerce Ajax Navigation (yith_wcan) game filter, server-rendered, requests+BS4 works cleanly. Page 1 uses the base URL (no /page/1/ suffix), pages 2+ use /shop/page/{page}/ with the same yith_wcan/filter_game/query_type_game query params appended. CONTAINER CLASS stock logic (like tcgkauppa.fi): check product_container's own class list for 'instock' vs 'outofstock' — no separate in_stock selector needed, hence null above; scraper must inspect the <li> element's class attribute directly. Caveat: the 'filter_game=pokemon' filter returns ~179 pages (2680 items) because it includes individual Pokemon TCG singles and generic accessories (sleeves, playmats, toploaders), not just sealed products — a real scraper likely wants to further restrict to product_cat values like product_cat-pokemon-boosters-blisters-etbs / product_cat-pokemon-decks-tins-boxes to avoid scraping thousands of single-card listings. max_pages set to the observed page count but should probably be capped much lower once category filtering is added."
+}
