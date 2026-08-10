@@ -21,7 +21,7 @@ if not rows:
     st.stop()
 
 df = pd.DataFrame(rows)
-df.columns = ["Site", "Last Scraped", "Consecutive Failures", "Last Error"]
+df.columns = ["Site", "Last Scraped", "Consecutive Failures", "Skipped (no price)", "Last Error"]
 
 broken = df[df["Consecutive Failures"] >= 2]
 healthy = df[df["Consecutive Failures"] < 2]

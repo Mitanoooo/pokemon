@@ -260,7 +260,7 @@ def get_site_health(conn: sqlite3.Connection) -> list[dict]:
     """Return site health rows for the Site Health page."""
     rows = conn.execute(
         """
-        SELECT name, last_scraped_at, consecutive_failures, last_error
+        SELECT name, last_scraped_at, consecutive_failures, null_price_count, last_error
         FROM sites
         ORDER BY consecutive_failures DESC, name
         """
@@ -391,6 +391,7 @@ def update_site_health(
     site_id: int,
     success: bool,
     error_text: Optional[str] = None,
+    null_price_count: int = 0,
 ) -> None:
     if success:
         conn.execute(
@@ -398,19 +399,21 @@ def update_site_health(
             UPDATE sites
             SET last_scraped_at = ?,
                 consecutive_failures = 0,
-                last_error = NULL
+                last_error = NULL,
+                null_price_count = ?
             WHERE id = ?
             """,
-            (_now(), site_id),
+            (_now(), null_price_count, site_id),
         )
     else:
         conn.execute(
             """
             UPDATE sites
             SET consecutive_failures = consecutive_failures + 1,
-                last_error = ?
+                last_error = ?,
+                null_price_count = ?
             WHERE id = ?
             """,
-            (error_text, site_id),
+            (error_text, null_price_count, site_id),
         )
     conn.commit()
