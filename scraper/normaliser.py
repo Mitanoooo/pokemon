@@ -63,6 +63,15 @@ def do_import(conn: sqlite3.Connection, input_path: str) -> dict:
                 """,
                 (product_id, raw_name, site_id),
             )
+            # backfill readings scraped before this alias existed (product_id
+            # is otherwise only resolved for new readings at scrape time)
+            conn.execute(
+                """
+                UPDATE price_readings SET product_id = ?
+                WHERE raw_name = ? AND site_id = ? AND product_id IS NULL
+                """,
+                (product_id, raw_name, site_id),
+            )
             conn.commit()
             aliases_created += 1
         else:

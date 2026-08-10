@@ -142,3 +142,17 @@ def test_import_reports_counts(conn, site_id, tmp_path):
     assert stats["aliases_created"] == 1
     assert stats["products_created"] == 1
     assert stats["skipped"] == 1
+
+
+def test_import_backfills_product_id_on_existing_readings(conn, site_id, tmp_path):
+    # reading was scraped before any alias existed, so product_id is NULL
+    _seed_reading(conn, site_id, "Scarlet & Violet Booster")
+    mappings = [{"raw_name": "Scarlet & Violet Booster", "canonical_name": "Scarlet & Violet — Booster Bundle"}]
+    f = tmp_path / "mappings.json"
+    f.write_text(json.dumps(mappings))
+    do_import(conn, str(f))
+    row = conn.execute(
+        "SELECT product_id FROM price_readings WHERE raw_name = ?",
+        ("Scarlet & Violet Booster",),
+    ).fetchone()
+    assert row["product_id"] is not None
