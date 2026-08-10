@@ -1,0 +1,22 @@
+{
+  "site_name": "Hobby Hall",
+  "source_url": "https://hobbyhall.fi/fi/brands/p/pokemon",
+  "method": "css",
+  "selectors": {
+    "product_container": "div.c-product-card",
+    "product_name": ".c-product-card__title a",
+    "price": ".c-product-card__prices .c-price:not(.h-price--loyalty):not(.c-price--leasing)",
+    "in_stock": null,
+    "product_url": ".c-product-card__title a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": null,
+    "url_pattern": "https://hobbyhall.fi/fi/brands/p/pokemon?ob=&page={page}",
+    "max_pages": 4
+  },
+  "disabled": true,
+  "disabled_reason": "Brand page mixes TCG products with unrelated Pokemon merchandise (backpacks, bedding, etc.). No stock signal on listing cards.",
+  "confidence": "medium",
+  "notes": "Hobby Hall is a general Nordic/Baltic retailer (PIGU Group) - Pokemon is a cross-category brand page, not a dedicated card shop, so results mix TCG products with unrelated Pokemon-branded merchandise (backpacks, bedding, wallets, erasers). Required accepting a cookie-consent banner ('Hyväksy kaikki') before content rendered fully. Confirmed 4-page pagination via a noscript fallback block (.c-pagination) with ?page={page} links (base page has no page param / page=1). Price block (.c-product-card__prices) can contain up to 3 spans: a loyalty/member price (.h-price--loyalty, only for logged-in PLUS members), the regular price (.c-price.h-price--medium with no extra class - use this one), and an installment/leasing price (.c-price--leasing) - must exclude the loyalty and leasing variants to get the standard price. No stock/availability badge was found on the listing cards (only a delivery-time estimate span, e.g. '2-4 ARKIPÄIVÄÄ', which is not a reliable in-stock signal) - in_stock left null."
+}

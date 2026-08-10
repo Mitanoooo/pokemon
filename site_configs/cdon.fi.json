@@ -1,0 +1,22 @@
+{
+  "site_name": "CDON",
+  "source_url": "https://cdon.fi/lelut/kerailykortit/pokemon-kortit/",
+  "method": "css",
+  "selectors": {
+    "product_container": "[data-cy=\"article-grid\"] li",
+    "product_name": "a[title]",
+    "price": "[data-cy=\"product-price\"]",
+    "in_stock": null,
+    "product_url": "a[href*=\"/tuote/\"]"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": null,
+    "url_pattern": "https://cdon.fi/lelut/kerailykortit/pokemon-kortit/?page={page}",
+    "max_pages": 25
+  },
+  "disabled": true,
+  "disabled_reason": "JS-rendered (React + lazy-load). Plain requests returns placeholder HTML. Requires headless browser.",
+  "confidence": "medium",
+  "notes": "Large marketplace, JS-rendered React/Next.js app with dynamically generated styled-components class names (sc-xxxx hashes) that are NOT stable across deploys - avoid relying on those, use the stable data-cy attributes instead (data-cy=\"article-grid\", data-cy=\"article-card\", data-cy=\"product-price\") plus a[title] for product name and a[href*=\"/tuote/\"] for the link. Products are lazy-loaded via client-side JS (initial HTML shows 'Ladataan tuotetta...' placeholders) - requires a headless browser / JS rendering, plain requests+BS4 will not see products. Confirmed 'Sivu 1/25' text indicator and ?page={page} query param links present in DOM (up to page=25). No explicit in-stock/out-of-stock badge found on listing cards - all 48 sampled items had a working 'Lisää ostoskoriin' buy button, so in_stock could not be reliably detected from the listing page alone (marketplace listings for out-of-stock items are typically just not shown)."
+}

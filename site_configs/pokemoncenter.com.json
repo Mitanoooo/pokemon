@@ -1,0 +1,22 @@
+{
+  "site_name": "Pokémon Center",
+  "source_url": "https://www.pokemoncenter.com/category/new-releases?category=trading-card-game",
+  "method": "css",
+  "selectors": {
+    "product_container": null,
+    "product_name": null,
+    "price": null,
+    "in_stock": null,
+    "product_url": null
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 0
+  },
+  "disabled": true,
+  "disabled_reason": "Imperva/hCaptcha bot-protection on every request. Needs official API, residential proxy, or manual checking — plain scraper not viable.",
+  "confidence": "low",
+  "notes": "Blocked — Imperva/Incapsula bot-protection with an hCaptcha 'I am human' challenge intercepts every request (both a plain requests/curl fetch and a real browser session got the same 'Additional security check is required' interstitial, incident IDs like 7235000720133706474-362790703941751309). No product HTML was ever reached, so no selectors could be determined. Did not attempt to solve the CAPTCHA (that would be bypassing an anti-bot security control). This site likely needs a different approach entirely — e.g. an official/partner API, a residential-proxy + real-browser-fingerprint scraping service, or manual/periodic checking — rather than a plain scraper."
+}

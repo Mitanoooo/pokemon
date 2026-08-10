@@ -1,0 +1,22 @@
+{
+  "site_name": "Puolenkuun Pelit",
+  "source_url": "https://www.puolenkuunpelit.com/kauppa/default.php?cPath=31_168_686",
+  "method": "css",
+  "selectors": {
+    "product_container": null,
+    "product_name": null,
+    "price": null,
+    "in_stock": null,
+    "product_url": null
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "disabled": true,
+  "disabled_reason": "All selectors null — site blocked by corporate proxy on dev machine (Tietoturvailmoitus). Reachable from Hetzner? Re-enable and run selector analysis post-deployment.",
+  "confidence": "low",
+  "notes": "Blocked before any page content loaded - the corporate network security policy on this machine returns a 'Tietoturvailmoitus' (security notice) interstitial for this domain, categorized as 'games' and technically blocked at the proxy level. No product HTML was ever served, so selectors could not be determined. Would need to be revisited from a network without this content filter."
+}

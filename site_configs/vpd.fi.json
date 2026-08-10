@@ -1,0 +1,22 @@
+{
+  "site_name": "VPD Pelikauppa",
+  "source_url": "https://www.vpd.fi/pokemon-kortit/boosterit.html",
+  "method": "css",
+  "selectors": {
+    "product_container": "li.product-item",
+    "product_name": ".product-item-link",
+    "price": ".price",
+    "in_stock": ".stock-status.available",
+    "product_url": ".product-item-link"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": ".pages-item-next a",
+    "url_pattern": "https://www.vpd.fi/pokemon-kortit/boosterit.html?p={page}",
+    "max_pages": 11
+  },
+  "disabled": true,
+  "disabled_reason": "Selectors and pagination look correct (Magento 2, high confidence) but site not yet verified reachable from Hetzner. Enable after deployment check.",
+  "confidence": "high",
+  "notes": "Standard Magento 2 category/toolbar markup, very reliable class names. 'Tuotteet 1-25 / 266' => 25 per page, 11 pages total. Pagination confirmed via .pages ul with numbered links and a .pages-item-next 'Seuraava' link using ?p= query param. In-stock items show <span class=\"stock-status available\">N kpl</span> inside .stock-info; out-of-stock items would presumably lack the 'available' class (not observed directly on this page, all sampled items were in stock)."
+}

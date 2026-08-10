@@ -1,0 +1,22 @@
+{
+  "site_name": "Pelien Maa",
+  "source_url": "https://pelienmaa.com/collections/pokemon-booster-box",
+  "method": "css",
+  "selectors": {
+    "product_container": null,
+    "product_name": null,
+    "price": null,
+    "in_stock": null,
+    "product_url": null
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": null
+  },
+  "disabled": true,
+  "disabled_reason": "All selectors null — site blocked by corporate proxy on dev machine. Reachable from Hetzner? Re-enable and run selector analysis post-deployment.",
+  "confidence": "low",
+  "notes": "BLOCKED — not reachable from this machine at all: the corporate network security proxy intercepts the request and returns its own 'Tietoturvailmoitus' (security notice) page categorizing the site under 'games' and refusing access, before any Shopify/site content is served. No product HTML was ever seen, so no selectors could be inferred. Needs to be revisited from a network without this category block, or via a different fetch method not subject to the corporate proxy."
+}

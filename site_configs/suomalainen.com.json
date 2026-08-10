@@ -1,0 +1,22 @@
+{
+  "site_name": "Suomalainen.com",
+  "source_url": "https://www.suomalainen.com/collections/pokemon",
+  "method": "css",
+  "selectors": {
+    "product_container": "li.ais-Hits-item",
+    "product_name": "p.ais-hit--title",
+    "price": "p.ais-hit--price",
+    "in_stock": null,
+    "product_url": "a[href*='/products/']"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": ".ais-Pagination-item--nextPage a",
+    "url_pattern": "https://www.suomalainen.com/collections/pokemon?page={page}",
+    "max_pages": 3
+  },
+  "disabled": true,
+  "disabled_reason": "Algolia InstantSearch — product list only appears after JS execution. Plain requests returns no product HTML. Requires headless browser or Algolia API call.",
+  "confidence": "medium",
+  "notes": "IMPORTANT: listing is rendered client-side via Algolia InstantSearch (li.ais-Hits-item / ais-hit markup only appears after JS execution) — a plain requests+BS4 GET of the collection URL will very likely NOT contain these product elements; scraper needs a headless browser (Playwright) or to call Algolia's search API directly. No stock/availability indicator found anywhere in the 40 product cards inspected (Suomalainen.com is primarily a bookstore; Pokémon collection here is mostly books/merch, may not track stock on the listing page at all). Price is clean '27.95 €' format inside p.ais-hit--price > b. 3 pages, 40 products on page 1."
+}
