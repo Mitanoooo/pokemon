@@ -6,32 +6,35 @@
 **App port:** 8502 (Streamlit)
 **Repo:** `https://github.com/Mitanoooo/pokemon.git`
 
-> **SSH is blocked by corporate firewall.** All server management is done via the Hetzner API or the drafter upload server already running at `http://65.21.178.63:9000`. There is no SSH access from the office network.
+> **SSH is blocked by corporate firewall.** There is no SSH access from the office network. Ongoing deploys and management go through the pokemon-scoped HTTP deploy hook below — SSH was only ever needed once, from a machine outside the office network, to do the initial bootstrap (already done).
 
-> **Shared server.** The drafter app already runs on this server (port 8501, nginx/Caddy on port 80). The pokemon app uses port 8502. Do **not** add a second `server {}` block on port 80 — instead add a `/pokemon/` location block to the existing Caddy or nginx config, or run the app at a different path.
+> **Shared server.** The drafter app already runs on this server (port 8501, Caddy on port 80). The pokemon app runs on port 8502 and is reachable at `http://65.21.178.63/pokemon/` via a `handle /pokemon/*` block added to the existing Caddyfile — drafter's root route (`reverse_proxy localhost:8501`) is untouched.
+
+**Status: deployed and live** as of 2026-08-10 — app running, systemd service enabled, crontab installed, deploy hook running. Outstanding: Gmail credentials (`scripts/setup_email.py`) and Backblaze B2 `rclone config` still need to be run interactively with real credentials.
 
 ---
 
 ## Deploying Code Changes
 
-For code-only changes (no infrastructure updates):
+For code-only changes (no infrastructure updates), use the pokemon-scoped deploy hook on port 9001 (mirrors drafter's port-9000 pattern, but requires a bearer token — see `deploy/pokemon_deploy_server.py`):
 
 ```bash
 # 1. Commit and push
 git add -A
 git commit -m "your message"
-git push origin main
+git push origin master
 
-# 2. Pull on server (via drafter upload server)
-curl -X POST http://65.21.178.63:9000/pull
+# 2. Pull + restart on server (token stored in /etc/pokemon-deploy.token on the server)
+curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/pull
+curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/restart
 
-# 3. Restart pokemon service
-# (no restart endpoint scoped to pokemon yet — restart via Hetzner console or add one)
+# View recent app logs
+curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/logs
 ```
 
 ---
 
-## First-Time Setup (Full Deploy)
+## First-Time Setup (Full Deploy) — reference only, already completed
 
 ### 1. Clone the repo
 
