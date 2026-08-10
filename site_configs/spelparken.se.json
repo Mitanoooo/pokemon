@@ -1,0 +1,24 @@
+{
+  "site_name": "Spelparken",
+  "source_url": "https://spelparken.se/collections/pokemon-booster-boxes",
+  "method": "css",
+  "stock_mode": "badge_text",
+  "stock_badge_text": "Slutsåld",
+  "currency": "SEK",
+  "selectors": {
+    "product_container": "li.grid__item",
+    "product_name": "h3.card__heading a",
+    "price": ".price-item--sale",
+    "price_fallback": ".price-item--regular",
+    "in_stock": ".card__badge .badge",
+    "product_url": "h3.card__heading a"
+  },
+  "pagination": {
+    "type": "url_pattern",
+    "selector": "a[aria-label='Nästa sida']",
+    "url_pattern": "https://spelparken.se/collections/pokemon-booster-boxes?page={page}",
+    "max_pages": 2
+  },
+  "confidence": "high",
+  "notes": "Standard Shopify Dawn theme. Stock is INVERTED but the badge selector is not stock-specific: '.card__badge .badge' can also render 'Nyhet' (new) or sale badges, not just 'Slutsåld' (sold out) — scraper must check the badge's text content equals 'Slutsåld' to mark out-of-stock, not just presence. Price text contains both price__regular and price__sale blocks; when not discounted both show the same value — take the price-item--sale value if present and non-empty, else price-item--regular. 17 in-stock + 5 sold-out products, 2 pages confirmed."
+}

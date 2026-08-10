@@ -1,0 +1,23 @@
+{
+  "site_name": "Peliparatiisi",
+  "source_url": "https://peliparatiisi.net/en/collections/pokemon-boosterit",
+  "method": "css",
+  "stock_mode": "badge_text",
+  "stock_badge_text": "Sold out",
+  "selectors": {
+    "product_container": "li.grid__item",
+    "product_name": "h3.card__heading.h5 a",
+    "price": ".price-item--sale",
+    "price_fallback": ".price-item--regular",
+    "in_stock": ".badge",
+    "product_url": "h3.card__heading.h5 a"
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "high",
+  "notes": "Standard Shopify Dawn theme (same theme family as spelparken.se, batch 5). Confirmed 17 products, single page, no pagination controls. IMPORTANT: each product renders card__heading TWICE inside the same li.grid__item (once in a hidden 'no-media' variant h3.card__heading without extra class, once in the real visible card h3.card__heading.h5) — always scope to 'h3.card__heading.h5 a' (note the '.h5' class), not the bare 'h3.card__heading a', to avoid matching the same product link twice. Stock is INVERTED: '.badge' presence = out of stock ('Sold out' text observed on ~11 of 17 products); only 'Sold out' badge text was observed on this collection but the same Dawn-theme badge class can also render unrelated badges like 'New'/sale % elsewhere on this platform (confirmed on spelparken.se) — verify badge text equals 'Sold out' rather than trusting bare presence if reused across other collections on this site. Price element has nested '.price-item--sale' / '.price-item--regular' spans; take the sale value if present and non-empty, else regular. Cookie-consent dialog appears on first load and may need dismissing for a browser-based scrape."
+}

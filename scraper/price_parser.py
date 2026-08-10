@@ -1,0 +1,85 @@
+import logging
+import re
+from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# Sites that use a dot as decimal separator
+_DOT_DECIMAL_SITES = {
+    "MaxGaming",
+    "Spelexperten",
+    "Pelimies",
+    "Lelukauppa Partanen",
+    "Karkkainen.com verkkokauppa",
+    "Pelikrypta (Ikamaa)",
+    "Fantasialinna",
+}
+
+
+def parse_price(raw_text: str, config: dict) -> Optional[float]:
+    """Parse a raw price string into a float.
+
+    Handles all Finnish/Swedish retailer price format variants documented in
+    site_notes.md.  Returns None and logs a warning for suspicious values
+    (< 2.0 or > 2000.0).
+    """
+    site_name = config.get("site_name", "")
+    text = raw_text
+
+    # 1. Normalise non-breaking spaces throughout
+    text = text.replace("\xa0", " ")
+
+    # 2. Strip "Sale price" prefix (godofcards.com)
+    text = re.sub(r"(?i)^sale\s*price\s*", "", text)
+
+    # 3. Strip EUR suffix
+    text = re.sub(r"\bEUR\b", "", text)
+
+    # 4. Strip trailing kr (spelparken.se) — must come before € stripping
+    text = re.sub(r"\bkr\b", "", text)
+
+    # 5. Strip € prefix and suffix
+    text = text.replace("€", " ")
+
+    # 6. Strip any remaining non-numeric junk from the string while keeping
+    #    digits, commas, dots, spaces, and minus
+    text = text.strip()
+
+    # 7. Find all numeric tokens (handles "4,90 3,90" → ["4,90", "3,90"])
+    tokens = re.findall(r"\d[\d\s]*[.,]?\d*", text)
+    if not tokens:
+        logger.warning("No numeric value found in price text: %r (site: %s)", raw_text, site_name)
+        return None
+
+    # 8. Take the last token (sale price wins over original price)
+    last_token = tokens[-1].strip()
+
+    # 9. Remove spaces used as thousands separators
+    last_token = last_token.replace(" ", "")
+
+    # 10. Convert decimal separator: comma → dot (unless site uses dot decimal)
+    use_dot = site_name in _DOT_DECIMAL_SITES
+    if use_dot:
+        # dot is already the decimal separator; remove any commas (thousands)
+        last_token = last_token.replace(",", "")
+    else:
+        # comma is the decimal separator; remove any dots (thousands), swap comma → dot
+        last_token = last_token.replace(".", "")
+        last_token = last_token.replace(",", ".")
+
+    try:
+        value = float(last_token)
+    except ValueError:
+        logger.warning("Could not convert %r to float (site: %s)", last_token, site_name)
+        return None
+
+    # 11. Suspicious price guard (EUR only — SEK prices legitimately exceed 2000)
+    is_sek = bool(re.search(r"\bkr\b", raw_text))
+    if not is_sek and (value < 2.0 or value > 2000.0):
+        logger.warning(
+            "Suspicious price %.2f from %r — returning None (site: %s)",
+            value, raw_text, site_name,
+        )
+        return None
+
+    return value
