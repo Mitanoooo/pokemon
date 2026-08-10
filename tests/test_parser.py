@@ -174,6 +174,13 @@ def test_scrape_page_peliparatiisi_stock_detection():
     assert len(sold_out) == 12
     assert len(in_stock) == 4
 
+def test_scrape_page_peliparatiisi_price_is_comma_decimal():
+    """Prices from fixture must be comma-decimal values (e.g. 39.9 not 3990.0)."""
+    html = Path("tests/fixtures/peliparatiisi.net/page1.html").read_text()
+    products = scrape_page(html, PELIPARATIISI_CFG)
+    prices = [p["price"] for p in products if p["price"] is not None]
+    assert all(p <= 200.0 for p in prices), f"Suspiciously large price found: {max(prices)}"
+
 
 # ── scrape_page: karkkainen.com (attribute-based price + stock) ──────────────
 

@@ -127,7 +127,3 @@ def test_price_exactly_2000_is_valid():
 def test_peliparatiisi_comma_decimal_not_multiplied():
     # Peliparatiisi uses Finnish comma-decimal; must yield 39.9 not 3990.0
     assert parse_price("€39,90 EUR", {"site_name": "Peliparatiisi"}) == 39.90
-
-def test_peliparatiisi_removed_from_dot_decimal():
-    from scraper.price_parser import _DOT_DECIMAL_SITES
-    assert "Peliparatiisi" not in _DOT_DECIMAL_SITES
