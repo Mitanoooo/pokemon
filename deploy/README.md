@@ -10,7 +10,7 @@
 
 > **Shared server.** The drafter app already runs on this server (port 8501, Caddy on port 80). The pokemon app runs on port 8502 and is reachable at `http://65.21.178.63/pokemon/` via a `handle /pokemon/*` block added to the existing Caddyfile, protected by Caddy `basicauth` (username `pokemon`, password given to the project owner out of band — never store it in this repo) — drafter's root route (`reverse_proxy localhost:8501`) is untouched.
 
-**Status: deployed and live** as of 2026-08-10 — app running, systemd service enabled, crontab installed, deploy hook running. Since initial deploy: Backblaze B2/rclone backup was removed entirely (no longer part of this project — SQLite DB is the only copy), a Streamlit multi-page-app bug was fixed (see gotcha below), the first scraper run completed (1,286 readings), and an initial normalisation pass mapped 486 of 1,270 raw names into 146 canonical products (799 remain, to be finished later). Outstanding: Gmail credentials (`scripts/setup_email.py`) still need to be run interactively with real credentials.
+**Status: deployed and live** as of 2026-08-10. Schema updated 2026-08-11 to `cardmarket_products` + `name_mappings`. LLM mapping pass complete: 292 mapped, 279 null_mapped, 728 undecided (resolved via Mapping Review UI). Outstanding: Gmail credentials (`scripts/setup_email.py`) still need to be run interactively with real credentials.
 
 > **Gotcha — don't rename `app/views/` back to `app/pages/`.** Streamlit auto-detects any folder literally named `pages/` sibling to the entrypoint as its own multi-page-app router, which registers each page as a standalone top-level route bypassing `main.py`'s custom router (the thing that sets up `st.session_state["conn"]`). Doing so silently breaks every page with a "No database connection." error. The folder is intentionally named `app/views/` for this reason.
 
@@ -146,20 +146,9 @@ venv/bin/python scripts/setup_email.py
 
 Skip for now if you don't have credentials yet — the scraper and Streamlit app work without email. The 05:00 UTC digest cron will fail silently until credentials are set.
 
-### 9. Run initial normalisation
+### 9. Run initial LLM mapping pass
 
-After the first scraper run, map raw product names to canonical names:
-
-```bash
-cd /opt/pokemon
-venv/bin/python -m scraper.normaliser export
-venv/bin/python scripts/build_canonical_mappings.py pending_names.json
-venv/bin/python -m scraper.normaliser import mappings.json
-```
-
-See `docs/normalisation-runbook.md` for the full procedure. Run before the first digest fires.
-
-**Note:** if a mapping is imported for a raw name that was already scraped *before* the mapping existed, `normaliser.py import` also backfills `price_readings.product_id` on those existing rows — no rescrape is needed for the Products page to pick up prices for newly-mapped names.
+After the first scraper run, open a Claude Code session and paste the prompt from `copilot_prompts/llm_normalise.md`. It will SSH into the server, fetch all unmapped names, assess them against the Cardmarket catalogue, and write results directly to the server DB.
 
 ---
 
@@ -176,7 +165,7 @@ See `docs/normalisation-runbook.md` for the full procedure. Run before the first
 | Run scraper manually | `cd /opt/pokemon && venv/bin/python -m scraper` |
 | Run digest manually | `cd /opt/pokemon && venv/bin/python -m scraper.digest` |
 | Re-run email setup | `cd /opt/pokemon && venv/bin/python scripts/setup_email.py` |
-| Run normalisation (export/map/import) | see step 9 above or `docs/normalisation-runbook.md` |
+| Run LLM mapping pass | Open Claude Code, paste `copilot_prompts/llm_normalise.md` |
 
 ---
 
@@ -189,7 +178,7 @@ See `docs/normalisation-runbook.md` for the full procedure. Run before the first
 | Digest not sending | `grep GMAIL /opt/pokemon/.env` — check credentials are not placeholders |
 | `KeyError: GMAIL_APP_PASSWORD` | Run `venv/bin/python scripts/setup_email.py` |
 | Scraper returns 0 products | Check `tail -20 /opt/pokemon/logs/scraper.log`; site may have changed selectors |
-| Products page empty or missing prices | Run normalisation pass (step 9 above); if names were already mapped but prices still show "—", confirm you're on a version of `normaliser.py` that backfills `price_readings.product_id` (fixed 2026-08-11) |
+| Products page empty or missing prices | Check that new raw names have been mapped — paste `copilot_prompts/llm_normalise.md` into Claude Code to run a mapping pass on the server |
 | Service not starting | `journalctl -u pokemon-streamlit -n 50` |
 
 ---
@@ -217,5 +206,5 @@ curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/restart
 - [ ] Install and start `pokemon-streamlit` systemd service
 - [ ] Add crontab entries
 - [ ] Run `scripts/setup_email.py` (can skip initially)
-- [ ] Let scraper run once, then run normalisation pass
+- [ ] Let scraper run once, then run LLM mapping pass (see step 9)
 - [ ] Verify app at `http://localhost:8502/_stcore/health`

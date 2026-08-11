@@ -1,125 +1,144 @@
-# LLM Normalisation Pass
+# LLM Mapping — Claude Code prompt
 
-Your job is to map every unmapped scraped product name to the correct Cardmarket product entry, or mark it as not a tracked product. Results are written directly to `pokemon.db`.
+Paste this prompt into a Claude Code session. It will SSH into the Hetzner server, fetch all unmapped names, map them against the Cardmarket catalogue, and write the results back.
 
-## Context
+---
 
-The SQLite database at `pokemon.db` (project root) has two relevant tables:
+Your task is to map every unmapped raw product name on the Hetzner server to the correct Cardmarket product entry, or mark it as not a tracked product.
 
-**`name_mappings`** — one row per distinct raw scraped name:
-- `raw_name TEXT PRIMARY KEY`
-- `cardmarket_product_id INTEGER` — FK into `cardmarket_products.id`; NULL for junk/non-product
-- `llm_suggestion_id INTEGER` — your best guess when confidence is below threshold
-- `confidence REAL` — your confidence 0.0–1.0
-- `status TEXT` — one of: `'mapped'`, `'null_mapped'`, `'undecided'`
-- `mapped_at TEXT` — datetime string, set when status is mapped or null_mapped
+## Connection
 
-**`cardmarket_products`** — the authoritative catalogue (5006 rows):
-- `id INTEGER` — the Cardmarket product ID (use this as the FK value)
-- `name TEXT` — product name, e.g. "Scarlet & Violet Booster Box"
-- `category_name TEXT` — e.g. "Pokémon Display", "Pokémon Booster", "Pokémon Elite Trainer Boxes"
+The database is on the Hetzner server. Use SSH throughout — do not copy the DB locally.
 
-Categories in the catalogue (all are sealed Pokémon TCG products):
-- Pokémon Box Set, Pokémon Booster, Pokémon Display, Pokémon Tins, Pokémon Blisters,
-  Pokémon Theme Deck, Pokémon Elite Trainer Boxes, Pokémon Coins, Pokémon Lot,
-  Pokémon Trainer Kits, PCG Set, Pokémon Pokémon Sets
+```
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63
+```
 
-## Your task
+Working directory on server: `/opt/pokemon`
+Database: `/opt/pokemon/pokemon.db`
+Python: `/opt/pokemon/venv/bin/python`
 
-### Step 1 — fetch unmapped names
+## Step 1 — fetch unmapped names and catalogue
 
-Run this query to get all raw names not yet mapped:
+Run this on the server to get what needs mapping:
 
-```python
+```bash
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 \
+  "/opt/pokemon/venv/bin/python -c \"
 import sqlite3
-conn = sqlite3.connect('pokemon.db')
-rows = conn.execute("""
+conn = sqlite3.connect('/opt/pokemon/pokemon.db')
+names = [r[0] for r in conn.execute('''
     SELECT DISTINCT raw_name FROM price_readings
     WHERE raw_name NOT IN (SELECT raw_name FROM name_mappings)
     ORDER BY raw_name
-""").fetchall()
-names = [r[0] for r in rows]
-print(f"{len(names)} names to process")
+''').fetchall()]
+print(len(names), 'unmapped names')
+for n in names: print(n)
 conn.close()
+\""
 ```
 
-### Step 2 — load the catalogue
+And fetch the catalogue:
 
-```python
-conn = sqlite3.connect('pokemon.db')
-catalogue = conn.execute(
-    "SELECT id, name, category_name FROM cardmarket_products ORDER BY name"
-).fetchall()
+```bash
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 \
+  "/opt/pokemon/venv/bin/python -c \"
+import sqlite3
+conn = sqlite3.connect('/opt/pokemon/pokemon.db')
+for row in conn.execute('SELECT id, name, category_name FROM cardmarket_products ORDER BY name'):
+    print(row[0], '|', row[1], '|', row[2])
 conn.close()
-# catalogue is a list of (id, name, category_name)
+\""
 ```
 
-### Step 3 — map names in batches of 50
+## Step 2 — assess each name
 
-Process names 50 at a time. For each batch, assess each raw name:
+For each unmapped raw name, decide:
 
-**Mapping rules:**
-- If the name clearly refers to a specific sealed Pokémon TCG product in the catalogue → `status='mapped'`, set `cardmarket_product_id` to the matching `id`, confidence ≥ 0.85
-- If the name is clearly NOT a sealed Pokémon TCG product (toy, plush, binder, costume, figure, puzzle, coin, etc.) → `status='null_mapped'`, `cardmarket_product_id=NULL`, confidence ≥ 0.85
-- If you can make a reasonable guess but aren't sure → `status='undecided'`, set `llm_suggestion_id` to your best guess id, confidence < 0.85
-- If you have no idea → `status='undecided'`, `llm_suggestion_id=NULL`, `confidence=NULL`
+- **mapped** — clearly refers to a specific sealed Pokémon TCG product in the catalogue → `status='mapped'`, set `cardmarket_product_id` to the matching `id`, `confidence ≥ 0.85`
+- **null_mapped** — clearly NOT a sealed Pokémon TCG product (toy, plush, figure, costume, puzzle, other TCG brand, etc.) → `status='null_mapped'`, `cardmarket_product_id=NULL`, `confidence ≥ 0.85`
+- **undecided** — uncertain → `status='undecided'`, set `llm_suggestion_id` to your best guess id, `confidence < 0.85`
 
 **Matching tips:**
-- Finnish product names often describe the same product: "Boosterpakkaus" = Booster, "Boosteri" = Booster, "Näyttölaatikko"/"Display" = Booster Box, "Elite Trainer Box"/"ETB" = Elite Trainer Box
-- Match on set name + product type. E.g. "Pokemon Scarlet & Violet Booster" → find the "Scarlet & Violet Booster" entry in the catalogue
-- When multiple catalogue entries could match (e.g. individual booster vs booster box), pick the one that best fits the name
-- Accessories, collectibles, toys, clothing, puzzles, binders, and figures are NOT tracked products → null_mapped
+- Finnish terms: "Boosterpakkaus"/"Boosteri" = Booster, "Näyttölaatikko"/"Display" = Booster Box/Display, "ETB"/"Elite Trainer Box" = Elite Trainer Box
+- Match on set name + product type
+- Non-Pokémon brands (Lorcana, MTG, FIFA/Panini, Topps, Funko, LEGO, Mega Construx) → null_mapped
+- Toys, plush, figures, costumes, puzzles, binders, sleeves, playmats → null_mapped
+- Individual promo cards (pattern: "Name – Set #NNN") → null_mapped
 
-### Step 4 — insert results
+## Step 3 — write results to the server
 
-After assessing each batch, insert with this pattern:
+After assessing all names, write them in batches of 50. Run this for each batch:
 
-```python
+```bash
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 \
+  "/opt/pokemon/venv/bin/python -c \"
 import sqlite3
 from datetime import datetime, timezone
-
-conn = sqlite3.connect('pokemon.db')
-now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-batch_results = [
-    # Each entry: (raw_name, cardmarket_product_id, llm_suggestion_id, confidence, status)
-    # Examples:
-    # ("Pokemon Scarlet & Violet Booster", 12345, None, 0.95, "mapped"),
-    # ("Pokemon Pikachu Pehmolelu 20cm",   None,  None, 0.98, "null_mapped"),
-    # ("Pokemon Mystery Box",               67890, None, 0.70, "undecided"),
+conn = sqlite3.connect('/opt/pokemon/pokemon.db')
+now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+batch = [
+    # (raw_name, cardmarket_product_id, llm_suggestion_id, confidence, status)
+    # e.g. ('Scarlet & Violet Booster Pack', 12345, None, 0.95, 'mapped'),
+    # e.g. ('Funko POP Pikachu', None, None, 0.98, 'null_mapped'),
+    # e.g. ('Mystery Pokemon Box', 67890, None, 0.70, 'undecided'),
 ]
-
-for raw_name, cm_id, suggestion_id, conf, status in batch_results:
+for raw_name, cm_id, sugg_id, conf, status in batch:
     mapped_at = now if status in ('mapped', 'null_mapped') else None
-    conn.execute("""
+    conn.execute('''
         INSERT OR IGNORE INTO name_mappings
             (raw_name, cardmarket_product_id, llm_suggestion_id, confidence, status, mapped_at)
         VALUES (?, ?, ?, ?, ?, ?)
-    """, (raw_name, cm_id, suggestion_id, conf, status, mapped_at))
-
+    ''', (raw_name, cm_id, sugg_id, conf, status, mapped_at))
 conn.commit()
+print('Inserted', len(batch), 'rows')
 conn.close()
+\""
 ```
 
-Use `INSERT OR IGNORE` so re-runs are safe.
+## Step 4 — backfill price_readings.product_id
 
-### Step 5 — report
+After all batches are written, run this once:
 
-After all batches, print a summary:
-
-```python
-conn = sqlite3.connect('pokemon.db')
-stats = dict(conn.execute("""
-    SELECT status, COUNT(*) FROM name_mappings GROUP BY status
-""").fetchall())
-print("Results:", stats)
+```bash
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 \
+  "/opt/pokemon/venv/bin/python -c \"
+import sqlite3
+conn = sqlite3.connect('/opt/pokemon/pokemon.db')
+updated = conn.execute('''
+    UPDATE price_readings
+    SET product_id = (
+        SELECT cardmarket_product_id FROM name_mappings
+        WHERE name_mappings.raw_name = price_readings.raw_name
+          AND name_mappings.status = 'mapped'
+    )
+    WHERE product_id IS NULL
+      AND EXISTS (
+        SELECT 1 FROM name_mappings
+        WHERE name_mappings.raw_name = price_readings.raw_name
+          AND name_mappings.status = 'mapped'
+      )
+''').rowcount
+conn.commit()
+total = conn.execute('SELECT COUNT(*) FROM price_readings').fetchone()[0]
+with_pid = conn.execute('SELECT COUNT(*) FROM price_readings WHERE product_id IS NOT NULL').fetchone()[0]
+print(f'Backfilled {updated} rows. Total with product_id: {with_pid}/{total}')
 conn.close()
+\""
 ```
 
-## Important notes
+## Step 5 — report
 
-- Commit after each batch of 50 so progress is saved if the session is interrupted
-- Re-check remaining unmapped names at the start of each batch (in case of retries): re-run the Step 1 query each time
-- Do not insert duplicate rows — `INSERT OR IGNORE` handles this
-- When in doubt between two similar catalogue entries, prefer the more specific one (e.g. "Booster Box" over "Booster" if the name says "booster box")
-- The confidence threshold for auto-commit is **0.85** — anything below goes to `undecided`
+```bash
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 \
+  "/opt/pokemon/venv/bin/python -c \"
+import sqlite3
+conn = sqlite3.connect('/opt/pokemon/pokemon.db')
+stats = dict(conn.execute('SELECT status, COUNT(*) FROM name_mappings GROUP BY status').fetchall())
+print('name_mappings:', stats)
+pr = conn.execute('SELECT COUNT(*) FROM price_readings').fetchone()[0]
+pr_pid = conn.execute('SELECT COUNT(*) FROM price_readings WHERE product_id IS NOT NULL').fetchone()[0]
+print(f'price_readings with product_id: {pr_pid}/{pr}')
+conn.close()
+\""
+```
