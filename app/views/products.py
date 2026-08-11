@@ -49,7 +49,7 @@ def show_detail(product_id: int) -> None:
                 "Last updated": r["scraped_at"],
             })
         df = pd.DataFrame(rows)
-        st.markdown(df.to_markdown(index=False), unsafe_allow_html=True)
+        st.dataframe(df, use_container_width=True, hide_index=True)
     else:
         st.info("No price data for this product.")
 
