@@ -17,13 +17,13 @@ if conn is None:
 
 def show_detail(product_id: int) -> None:
     product = conn.execute(
-        "SELECT canonical_name FROM products WHERE id = ?", (product_id,)
+        "SELECT name FROM cardmarket_products WHERE id = ?", (product_id,)
     ).fetchone()
     if not product:
         st.error("Product not found.")
         return
 
-    st.title(product["canonical_name"])
+    st.title(product["name"])
     if st.button("← Back to products"):
         st.session_state.pop("selected_product_id", None)
         st.rerun()

@@ -22,6 +22,7 @@ st.set_page_config(page_title="Pokemon Price Tracker", layout="wide")
 
 pages = {
     "Products": "views/products.py",
+    "Mapping Review": "views/mappings.py",
     "Site Health": "views/site_health.py",
     "Unknowns": "views/unknowns.py",
     "Categories": "views/categories.py",
