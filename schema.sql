@@ -18,8 +18,9 @@ CREATE TABLE IF NOT EXISTS cardmarket_products (
     category_name    TEXT NOT NULL,
     id_expansion     INTEGER NOT NULL,
     date_added       TEXT,
-    is_curated       INTEGER NOT NULL DEFAULT 0,
-    popularity_rank  INTEGER
+    is_curated       INTEGER NOT NULL DEFAULT 0 CHECK (is_curated IN (0, 1)),
+    popularity_rank  INTEGER,
+    CHECK (is_curated = 0 OR popularity_rank IS NOT NULL)
 );
 
 -- One row per distinct raw_name seen across all scraped sites.
