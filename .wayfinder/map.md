@@ -10,7 +10,7 @@ Stack: Python, SQLite, Streamlit, Claude API (already wired).
 Catalogue source: `cardmarket_catalogue.json` (5006 products, sealed Pokémon only).  
 Consult `/domain-modeling` and `/grilling` skills when resolving tickets.
 
-**Locked decisions:**
+**Locked decisions (initial overhaul):**
 - Canonical identity = `cardmarket_products.idProduct` (integer FK, no invented names)
 - Null-mapping is an explicit row in `name_mappings` (status = `null_mapped`)
 - Confidence score stored for all LLM results; auto-commit threshold = 0.85
@@ -20,9 +20,24 @@ Consult `/domain-modeling` and `/grilling` skills when resolving tickets.
 - LLM prompt lives inline in the CLI script as a module-level constant
 - Review UI: dropdown first option = "— Not a Pokémon product", then products grouped by category sorted by existing mapping count; save on select
 
+**Locked decisions (accuracy overhaul — see [spec](spec-accuracy-overhaul.md)):**
+- Ground truth catalog = curated subset of `cardmarket_products` marked `is_curated = 1`, ordered by `popularity_rank`
+- Catalog sourced from 8 Cardmarket category pages (popularity-ordered); re-scraped manually, quarterly
+- Classification rule: include if product belongs to one of the 8 curated categories; `null_mapped` everything else
+- Normalization uses few-shot calibration examples (25 products, human-annotated) as prompt context
+- Shadow mode: new mappings accumulate locally; production `name_mappings` wiped and replaced atomically at finalization
+- `undecided` reserved for genuinely unrecognizable raw_names only; not a substitute for low LLM confidence
+- No automated tests; operator reviews each batch CSV before committing
+
 ## Open tickets (frontier → blocked)
 
-None — all tickets resolved. Map complete.
+- [06 — Schema: curated catalog columns](tickets/06-schema-curated-catalog.md) — add `is_curated` + `popularity_rank` to `cardmarket_products` *(frontier)* ✓
+- [07 — Catalog scrape prompt](tickets/07-catalog-scrape-prompt.md) — `copilot_prompts/scrape_catalog.md` *(frontier)*
+- [08 — update_catalog.py](tickets/08-update-catalog-script.md) — apply scrape output to DB *(blocked by 06, 07)*
+- [09 — Calibration session prompt](tickets/09-calibration-prompt.md) — `copilot_prompts/llm_calibrate.md` *(blocked by 08)*
+- [10 — Batch normalization prompt](tickets/10-batch-normalise-prompt.md) — `copilot_prompts/llm_batch_normalise.md` *(blocked by 09)*
+- [11 — apply_batch.py](tickets/11-apply-batch-script.md) — accumulate + finalize script *(frontier)*
+- [12 — Run the accuracy pipeline](tickets/12-run-accuracy-pipeline.md) — end-to-end execution *(blocked by 08, 09, 10, 11)*
 
 ## Decisions so far
 

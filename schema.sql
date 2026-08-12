@@ -9,13 +9,17 @@ CREATE TABLE IF NOT EXISTS sites (
 );
 
 -- Imported once from cardmarket_catalogue.json; never written by the scraper.
+-- is_curated: 1 if this product appears on one of the 8 Cardmarket category pages.
+-- popularity_rank: position on the category page (1 = most popular); NULL if not curated.
 CREATE TABLE IF NOT EXISTS cardmarket_products (
-    id            INTEGER PRIMARY KEY,  -- cardmarket idProduct
-    name          TEXT NOT NULL,
-    id_category   INTEGER NOT NULL,
-    category_name TEXT NOT NULL,
-    id_expansion  INTEGER NOT NULL,
-    date_added    TEXT
+    id               INTEGER PRIMARY KEY,  -- cardmarket idProduct
+    name             TEXT NOT NULL,
+    id_category      INTEGER NOT NULL,
+    category_name    TEXT NOT NULL,
+    id_expansion     INTEGER NOT NULL,
+    date_added       TEXT,
+    is_curated       INTEGER NOT NULL DEFAULT 0,
+    popularity_rank  INTEGER
 );
 
 -- One row per distinct raw_name seen across all scraped sites.
