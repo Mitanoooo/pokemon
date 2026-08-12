@@ -13,7 +13,11 @@ The prompt must:
 
 Designed to be re-run quarterly as new sets release.
 
-**Status: OPEN**
+**Status: CLOSED**
+
+## Resolution
+
+`copilot_prompts/scrape_catalog.md` written. Covers: captcha pause, all 8 category URLs with pagination via `&site=N`, per-product extraction (id from listing data attrs / JSON-LD, name, category, popularity_rank), JSON output to `catalog_scrape.json`, null-safe id handling, summary report.
 
 Blocking: 08
 Blocked by: nothing (can be drafted independently of ticket 06)
