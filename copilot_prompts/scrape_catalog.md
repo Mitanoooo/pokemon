@@ -26,8 +26,7 @@ Work through the 8 categories below **in order**. For each category:
 
 1. Start at page 1 (the base URL).
 2. Extract all product entries visible on the page (see "What to extract" below).
-3. If a "Next page" link or page 2 link is present **and** you have scraped fewer than 10 pages for this category, navigate to the next page and repeat.
-4. Stop when you reach page 10 or there are no more pages, whichever comes first.
+3. Construct the next page URL by appending `&site=N` (N = 2, 3, …) and navigate to it. Stop when the page returns zero product entries or you have completed 10 pages, whichever comes first.
 5. Move on to the next category.
 
 ### The 8 categories
@@ -54,7 +53,7 @@ Each product entry on the listing page is a card or row. Extract:
 
 | Field | Where to find it |
 |---|---|
-| `cardmarket_product_id` | The integer product ID. Look for it in the product card's link URL (e.g. `/en/Pokemon/Products/Boosters/Prismatic-Evolutions-Booster-Pack` may embed an ID in a `data-idproduct` attribute, an `idProduct` query param, or the page's JSON-LD / structured data). If the listing page does not expose the ID directly, note it as `null` — do not click through to individual product pages, as that would be too slow. |
+| `cardmarket_product_id` | The integer product ID. Try these in order, stop at the first hit: (1) a numeric segment or `idProduct=` query parameter in the product link's `href`; (2) a `data-idproduct` or similar data attribute on the product card element; (3) the page's JSON-LD / structured data. If none of these expose the ID, write `null` — do not click through to individual product pages. |
 | `name` | The product name as shown in the listing (e.g. `"Prismatic Evolutions Booster Pack"`). |
 | `category` | The category name from the table above (e.g. `"Boosters"`). Use exactly the names in the table. |
 | `popularity_rank` | The position of this product within its category, counting across all pages. The first product on page 1 is rank 1, the last product on page 10 is rank ≤ 300. |
@@ -110,6 +109,8 @@ Scraped:
 ## Notes
 
 - **Do not scrape individual product pages** — only the category listing pages. Clicking through to 2,400 product pages would take too long.
+- **`onlyAvailable=on`** — all URLs filter to currently-available products. `popularity_rank` therefore reflects position among available listings, not site-wide all-time popularity. This is intentional.
+- **Duplicates across categories** — if the same product name appears in more than one category, include it once per category it appears in. Categories are distinct and the same product can legitimately be listed under multiple categories on Cardmarket.
 - If a category has fewer than 30 products total, that is fine — just collect what is there.
 - If Cardmarket shows a "no results" or empty page, stop pagination for that category.
 - If another captcha appears mid-scrape, stop and wait for the operator to pass it before continuing.
