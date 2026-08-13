@@ -28,7 +28,7 @@ rows = conn.execute('''
     SELECT
         pr.raw_name,
         COUNT(*)                             AS reading_count,
-        GROUP_CONCAT(DISTINCT s.name, ' | ') AS sites
+        GROUP_CONCAT(DISTINCT s.name)        AS sites
     FROM price_readings pr
     JOIN sites s ON s.id = pr.site_id
     GROUP BY pr.raw_name
@@ -75,6 +75,8 @@ conn.close()
 Work through the 25 raw_names **one at a time**. For each raw_name:
 
 1. **Find top-5 candidates.** Using the curated catalog from Step 2, score each product with `difflib.SequenceMatcher(None, raw_name.lower(), product_name.lower()).ratio()`, then use `popularity_rank` as a tiebreaker (lower = more popular). Pick the 5 highest-scoring products.
+
+   Note that `popularity_rank` is numbered **per category**, not globally — 8 different products sit at rank 1. It is a usable tiebreaker within a category but does not order the catalog as a whole, so do not read rank 1 as "most popular product overall".
 
 2. **Present to the operator.** Display the following block and then **stop and wait for the operator to reply before proceeding**:
 

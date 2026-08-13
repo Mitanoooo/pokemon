@@ -24,7 +24,9 @@ Blocked by: 08, 09, 10, 11 — all closed
   - `not_found: 0` means the base catalogue did **not** need re-importing — every resolvable product was already in the 5,006-row import.
 - **Steps 3–6 remain.** All are operator-interactive or destructive; see the runbook.
 
-**Before step 5, note the baseline moved.** This ticket's step-5 text assumes the ticket-05 state (292 mapped / 279 null_mapped / 728 undecided). Production is now **1,280 mapped / 302 null_mapped / 235 undecided** (1,817 rows; 1,911 `price_readings` linked; 1,304 distinct raw_names) — someone has done substantial Mapping Review UI work since ticket 05. `--finalize` discards all of it. Decide deliberately whether the LLM draft is expected to beat 1,280 hand-checked mappings before running it.
+**Current production mapping state (2026-08-13), for the step-5 diff:** 1,280 mapped / 302 null_mapped / 235 undecided (1,817 rows; 1,911 `price_readings` linked; 1,304 distinct raw_names). This is *not* the ticket-05 state its step-5 text quotes — a later LLM pass has run since.
+
+These rows are all LLM output and confirmed by the operator to be largely wrong; that inaccuracy is the reason this overhaul exists. Nothing here is hand-curated, so `--finalize` replacing all 1,817 wholesale is the intended outcome, not a loss. Still take the server-side DB copy first — there is no built-in undo if a *draft* turns out bad.
 
 ---
 
@@ -91,7 +93,7 @@ Accumulate mode is keyed on `raw_name`, so re-running a corrected CSV overwrites
 python scripts/apply_batch.py --finalize
 ```
 
-Single transaction on Hetzner: `DELETE FROM name_mappings` → bulk INSERT the whole draft → backfill `price_readings.product_id`. This discards the ticket-05 mapping state (292 mapped / 279 null_mapped / 728 undecided) and replaces it wholesale.
+Single transaction on Hetzner: `DELETE FROM name_mappings` → bulk INSERT the whole draft → backfill `price_readings.product_id`. This discards whatever is in `name_mappings` and replaces it wholesale — as of 2026-08-13 that is 1,817 rows of superseded LLM output (see "Progress" above), which is intended.
 
 Only run this once every batch is accumulated. Check `draft_mappings.json` has ~1,296 entries first — finalizing a partial draft leaves every unprocessed raw_name with no mapping row at all.
 
