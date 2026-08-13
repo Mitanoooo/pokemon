@@ -1,0 +1,255 @@
+# Batch Normalization — Claude Code prompt
+
+Paste this prompt into a Claude Code session. It supersedes `llm_normalise.md` as the primary normalization tool. It fetches every unprocessed raw_name from Hetzner, processes them in batches of 100 using the curated catalog and calibration examples, and outputs a verified CSV per batch that the operator feeds into `apply_batch.py`.
+
+Run `llm_calibrate.md` and `update_catalog.py` before this prompt — the curated catalog and `calibration_examples.md` must exist first.
+
+---
+
+## Connection
+
+```
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63
+```
+
+Database: `/opt/pokemon/pokemon.db`
+Python: `/opt/pokemon/venv/bin/python`
+
+---
+
+## Step 1 — fetch all raw_names from Hetzner
+
+Run this to retrieve every distinct raw_name that has ever appeared in `price_readings`:
+
+```bash
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 \
+  "/opt/pokemon/venv/bin/python -c \"
+import sqlite3, json
+conn = sqlite3.connect('/opt/pokemon/pokemon.db')
+names = [r[0] for r in conn.execute(
+    'SELECT DISTINCT raw_name FROM price_readings ORDER BY raw_name'
+).fetchall()]
+print(json.dumps(names))
+conn.close()
+\""
+```
+
+Hold this list in memory as `all_remote_names`.
+
+---
+
+## Step 2 — compute unprocessed names from local draft
+
+Read `draft_mappings.json` from the project root. If the file does not exist, treat it as an empty list.
+
+```bash
+cat draft_mappings.json 2>/dev/null || echo "[]"
+```
+
+Parse the JSON array. Extract the `raw_name` field from every entry and hold that set as `already_processed`.
+
+Compute: `todo = all_remote_names - already_processed` (set difference, order preserved from `all_remote_names`).
+
+Print a summary before continuing:
+
+```
+Remote raw_names:       <N>
+Already in draft:       <N>
+Remaining to process:   <N>
+Batches to run:         <N>  (batches of 100)
+```
+
+If `todo` is empty, print "Nothing to do — all raw_names are already in draft_mappings.json." and stop.
+
+---
+
+## Step 3 — fetch the curated catalog from Hetzner
+
+```bash
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 \
+  "/opt/pokemon/venv/bin/python -c \"
+import sqlite3, json
+conn = sqlite3.connect('/opt/pokemon/pokemon.db')
+rows = conn.execute('''
+    SELECT id, name, category_name, popularity_rank
+    FROM cardmarket_products
+    WHERE is_curated = 1
+    ORDER BY popularity_rank ASC
+''').fetchall()
+catalog = [{'id': r[0], 'name': r[1], 'category': r[2], 'rank': r[3]} for r in rows]
+print(json.dumps(catalog))
+conn.close()
+\""
+```
+
+Hold this list in memory as `curated_catalog`. It is sorted by `popularity_rank` ASC — most popular products come first.
+
+---
+
+## Step 4 — read calibration examples
+
+Read `copilot_prompts/calibration_examples.md` from the project root. Hold its full text in memory as `calibration_examples`. You will use it as few-shot context when assigning mappings in Step 6.
+
+---
+
+## Step 5 — normalization rules
+
+Apply these rules consistently to every raw_name in every batch.
+
+### 5a — Classification rule (in-scope vs. out-of-scope)
+
+Only the following 8 Cardmarket product categories are in-scope for `mapped` status:
+
+1. Boosters
+2. Booster Boxes
+3. Theme Decks
+4. Trainer Kits
+5. Tins
+6. Box Sets
+7. Elite Trainer Boxes
+8. Blisters
+
+Any raw_name that clearly does not refer to a product in one of these 8 categories must be `null_mapped`. This includes (but is not limited to):
+
+- Individual cards / singles / promo cards (pattern: "Name – Set #NNN")
+- Non-Pokémon TCG products (Lorcana, Magic: the Gathering, FIFA/Panini, Topps, One Piece, Digimon, Yu-Gi-Oh)
+- Non-TCG products: toys, plush figures, costumes, puzzles, binders, sleeves, playmats, display stands, card storage, Funko POPs, LEGO, Mega Construx
+- Gift sets and Pokémon Center exclusives whose category is not one of the 8 above
+
+### 5b — Status definitions
+
+| Status | When to assign | `cardmarket_product_id` |
+|---|---|---|
+| `mapped` | You are confident (≥ 0.85) this raw_name refers to a specific product in `curated_catalog` | Set to the matching product's `id` |
+| `null_mapped` | You are confident this is not a sealed Pokémon TCG product from the 8 categories | `null` |
+| `undecided` | The text is garbled, an encoding error, too short to interpret, or in a completely unrecognized language — you cannot form a hypothesis | Set to the best-guess product `id` if any plausible candidate exists, otherwise `null` |
+
+**`undecided` is a last resort, not a substitute for low confidence.** If you are uncertain which of two products a raw_name refers to, pick the more popular one and use `mapped` or `null_mapped` as appropriate — do not use `undecided`. Reserve `undecided` only for text that is genuinely uninterpretable.
+
+### 5c — Candidate selection and soft prior
+
+When assessing a raw_name:
+
+1. Search `curated_catalog` for products whose name is a plausible match (consider partial name matches, abbreviated set names, alternative product-type spellings).
+2. If two or more candidates are equally plausible, **prefer the one with the lower `popularity_rank`** (i.e., the more popular product). The catalog is already sorted by `popularity_rank` ASC, so earlier entries are preferred by default.
+3. If no candidate is plausible and the raw_name clearly refers to an in-scope sealed product that is simply absent from the curated catalog, still assign `null_mapped` — do not force a low-confidence match to a wrong product.
+
+### 5d — Finnish → English translation glossary
+
+Finnish retailer listings often use Finnish or mixed-language product names. Use this glossary before searching for candidates:
+
+| Finnish term | English equivalent |
+|---|---|
+| Boosterpakkaus / Boosteri | Booster (single pack) |
+| Näyttölaatikko / Näyttö / Display | Booster Box / Display Box |
+| ETB / Elite Trainer Box | Elite Trainer Box |
+| Tin / Tinarasia | Tin |
+| Paketti / Pakkaus | Pack / Bundle |
+| Korttipeli | Card game |
+| Aloituspakka / Aloituspakkaus | Starter Deck / Theme Deck |
+| Blister / Blisterpakkaus | Blister pack |
+| Lahjakortti / Lahjapaketti | Gift card / Gift set |
+| Pelilauta / Pelimatto | Playmat → null_mapped |
+| Suoja / Suojamuovi / Sleeves | Card sleeves → null_mapped |
+| Kansio / Binder | Card binder → null_mapped |
+| Figuuri / Pehmolelut | Figure / Plush → null_mapped |
+
+Swedish-language terms are similar to English; treat "Boosterpaket" as Booster, "Displaybox" as Booster Box, "Starterdäck" as Theme Deck.
+
+### 5e — Calibration examples as few-shot context
+
+The calibration examples in `calibration_examples.md` show 25 worked mappings with operator-supplied reasoning. Before assigning a mapping, check whether any calibration example has a similar raw_name or set name — use those decisions as a precedent for matching style and confidence thresholds.
+
+---
+
+## Step 6 — batch loop
+
+Split `todo` into batches of 100 (the final batch may be smaller).
+
+For each batch:
+
+### 6a — Assess all 100 names
+
+Work through the 100 raw_names in order. For each one, apply the rules in Step 5 and produce:
+
+| Field | Description |
+|---|---|
+| `raw_name` | Exact value as fetched from the DB — do not alter |
+| `proposed_name` | The matched product name from `curated_catalog`, or empty string if `null_mapped` / `undecided` |
+| `cardmarket_product_id` | Integer product ID, or empty if `null_mapped` / no plausible match for `undecided` |
+| `confidence` | Float 0.00–1.00 (two decimal places). Use ≥ 0.85 for `mapped` and `null_mapped`; use < 0.85 only for `undecided` |
+| `status` | `mapped`, `null_mapped`, or `undecided` |
+
+### 6b — Write the batch CSV
+
+Write the results to a file named `batch_NNN.csv` where NNN is the zero-padded batch number (e.g. `batch_001.csv`, `batch_002.csv`). Use the working directory of the project root.
+
+CSV format:
+```
+raw_name,proposed_name,cardmarket_product_id,confidence,status
+```
+
+No quoting is necessary unless the value contains a comma or newline. Use UTF-8 encoding.
+
+After writing the file, print:
+
+```
+Batch NNN written to batch_NNN.csv
+  mapped:      <N>
+  null_mapped: <N>
+  undecided:   <N>
+  ─────────────────────────────────
+  Total:       <N>
+```
+
+### 6c — Pause for operator review
+
+After printing the summary, **stop and wait for the operator to reply before processing the next batch.**
+
+Display this prompt to the operator:
+
+```
+─────────────────────────────────────────────────────────────
+Operator review — batch_NNN.csv
+
+Open the file in a spreadsheet tool or text editor.
+Correct rows need no action.
+For incorrect rows, either:
+  (a) Edit the CSV directly and save it, then reply: done
+  (b) Reply: skip  — to discard this batch and re-run it
+
+After review, run:
+  python scripts/apply_batch.py batch_NNN.csv
+
+Then reply "next" to continue with the next batch, or "stop" to end the session.
+─────────────────────────────────────────────────────────────
+```
+
+Wait for the operator's reply. If the operator replies:
+- `next` or `done` — proceed to the next batch
+- `stop` — end the session and print the final summary (see Step 7)
+- `skip` — discard the current batch CSV and re-run the same 100 names
+
+Do not advance automatically. Only proceed when the operator explicitly replies.
+
+---
+
+## Step 7 — session summary
+
+When all batches are complete (or the operator replies `stop`), print:
+
+```
+─────────────────────────────────────────────────────────────
+Session complete.
+
+Batches written:   <N>
+Raw names covered: <N>  (this session)
+Remaining in todo: <N>  (re-run this prompt to continue)
+
+Next steps:
+  1. Run apply_batch.py for any batches not yet accumulated.
+  2. Once all batches are verified, run:
+       python scripts/apply_batch.py --finalize
+     to push the full draft_mappings.json to production.
+─────────────────────────────────────────────────────────────
+```
