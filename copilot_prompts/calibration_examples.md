@@ -24,21 +24,45 @@ names, `popularity_rank` ascending as tiebreaker). In **ten** of the 25 examples
 five at all** — that is the point of those examples, and it is why the batch prompt
 searches the whole catalog rather than a top-5 shortlist.
 
+### Provenance — read this before trusting a rationale
+
+The **rules** below are the operator's: they were decided directly, one question at
+a time, and they are the binding part of this file. The **per-example reasoning**
+(`Why it matched`, `Why candidates didn't match`) was written by Claude applying
+those rules, and was not confirmed by the operator example by example — the
+interactive 25-product loop in `llm_calibrate.md` step 3 was not run to completion.
+
+What is nonetheless real data, not illustration: every raw_name, site list and
+observed price comes from `price_readings` on production, every candidate list is
+actual `calibration_candidates.py` output, and every product id was verified to
+resolve to a live `is_curated = 1` catalog row.
+
+So: apply the rules as binding. Treat the worked examples as a strong prior on
+matching style and wording, not as adjudicated ground truth.
+
 ## Operator decision rules
 
 | # | Situation | Rule | Examples |
 |---|---|---|---|
 | 1 | Retailer ships "1 of N random selection" | `null_mapped` — no single row is the product sold | 5, 6, 12 |
 | 2 | Product family is certain but the featured Pokémon is unnamed | `undecided`, with the lowest-rank variant as best guess | 3, 4, 11, 23 |
-| 3 | Retailer sells a multi-unit case (`Case (12)`, `Booster Box (6)`) | Map to the **single-unit** row | 11 |
+| 3 | Retailer sells a multi-unit case (`Case (12)`, `Booster Box (6)`, `Bundle Display`) | Map to the **exact multi-unit row** if the catalog has one; otherwise the **single-unit** row | 11 |
 | 4 | Catalog has both a plain and a Pokémon Center edition | Prefer the **plain** retail edition | 15 |
 | 5 | Bare "Booster" / "Boosteri" / "Boosterpakkaus", no box qualifier | The single-pack `<Set> Booster` row | 2, 16, 19, 20, 21 |
 | 6 | Listing sells a service, not a product ("BOX BREAK", "Rip & Ship") | `null_mapped` — the buyer receives loose cards | 9, 10 |
 
 Rule 2 outranks rule 3: a case of an unnamed variant is `undecided` (example 11).
 
-Rule 3 has a known consequence the operator accepted deliberately — a case price is
-6-12x the single-unit price, so those readings will surface as price outliers.
+**Rule 3 was amended during batch 001 of step 4.** As written during this session it
+always collapsed to the single-unit row, which is what example 11 shows. The catalog
+turned out to carry many exact multi-unit rows (`873607 Ascended Heroes Booster
+Bundle Display`, `877281 Chaos Rising 6 Booster Box Case`), so the amended rule
+prefers the exact row and falls back to the single unit only when no multi-unit SKU
+exists. Example 11 is unaffected — rule 2 outranks rule 3 there.
+
+Where the fallback does apply, it has a consequence the operator accepted
+deliberately: a case price is 6-12x the single-unit price, so those readings will
+surface as price outliers.
 
 ### Price as a prior
 

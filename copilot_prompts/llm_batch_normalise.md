@@ -158,14 +158,16 @@ These come from the step-3 calibration session and are binding. `calibration_exa
 |---|---|---|---|
 | 1 | Retailer ships "1 of N random selection" | `null_mapped` — no single row is the product sold | 5, 6, 12 |
 | 2 | Product family certain, featured Pokémon unnamed | `undecided` + lowest-rank variant as best guess | 3, 4, 11, 23 |
-| 3 | Retailer sells a multi-unit case (`Case (12)`, `Booster Box (6)`) | Map to the **single-unit** row | 11 |
+| 3 | Retailer sells a multi-unit case (`Case (12)`, `Booster Box (6)`, `Bundle Display`) | Map to the **exact multi-unit row** if the catalog has one; otherwise the **single-unit** row | 11 |
 | 4 | Catalog has both a plain and a Pokémon Center edition | Prefer the **plain** retail edition | 15 |
 | 5 | Bare "Booster" / "Boosteri" / "Boosterpakkaus", no box qualifier | The single-pack `<Set> Booster` row | 2, 16, 19, 20, 21 |
 | 6 | Listing sells a service, not a product ("BOX BREAK", "Rip & Ship") | `null_mapped` — the buyer receives loose cards | 9, 10 |
 
-Rule 2 outranks rule 3: a case of an unnamed variant is `undecided`, and its best guess is the single-unit variant rather than the catalog's multi-unit "Display" row (example 11).
+Rule 2 outranks rule 3: a case of an unnamed variant is `undecided`, and its best guess is the single-unit variant rather than the catalog's multi-unit "Display" row (example 11) — with the Pokémon unnamed there is no per-Pokémon row to be confident about, so the multi-unit row is not a better guess.
 
-Rule 3 has a known, accepted consequence: a case price is 6–12× the single-unit price, so those readings will surface later as price outliers. Apply the rule anyway.
+**Rule 3 amended 2026-08-13 during batch 001.** As first written it always collapsed to the single-unit row. The curated catalog turned out to carry many exact multi-unit rows — `873607 Ascended Heroes Booster Bundle Display`, `877281 Chaos Rising 6 Booster Box Case`, `818576 Destined Rivals 6 Booster Box Case`, `860573 Ascended Heroes 10 Elite Trainer Box Case` — and collapsing to the single unit discarded a real match while attaching a 1,245 EUR reading to a 106 EUR product. Prefer the exact row. Only fall back to the single-unit row when the catalog genuinely has no multi-unit SKU for that product, and accept the price-outlier consequence there (a case price is 6–12× the single-unit price).
+
+Note that an 18-pack "half" box is **not** a multi-unit case — it is its own smaller SKU, and most sets have a `... Booster Box (18 Boosters)` row for it (example: `818575`).
 
 ### 5c — Candidate selection and soft prior
 
