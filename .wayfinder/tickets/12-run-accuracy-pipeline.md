@@ -27,10 +27,11 @@ Blocked by: 08, 09, 10, 11 — all closed
   - **The prompt's "Swedish-language sites" stratum barely exists.** Only one tracked site is `.se` and its listings are in English; Finnish is the second language that actually appears. The bank is weighted to Finnish accordingly.
   - **The output format gained a `Status:` field per example.** The calibration produced a three-way `mapped` / `null_mapped` / `undecided` decision, which the format in `llm_calibrate.md` has no field for. Observed price and listing sites are recorded per example too, since price turned out to be the decisive pack-vs-box signal.
 - **Step 3 produced six binding operator rules**, all worked through in the examples file and mirrored into `llm_batch_normalise.md` § 5b2: random-assortment listings → `null_mapped`; unnamed featured Pokémon → `undecided` + lowest-rank best guess; multi-unit cases → the single-unit row; plain edition preferred over Pokémon Center; bare "Booster" → the single-pack row; box-break / Rip & Ship services → `null_mapped`.
-- **`llm_batch_normalise.md` amended for step 4 (2026-08-13).** Step 1 now fetches each raw_name's observed price range and sites alongside the name, and a new § 5f uses price to separate product forms — single packs read 4–12 EUR against 150–400 EUR for display boxes, and 26% of tracked raw_names are a bare "Booster"/"Boosteri" with no qualifier. Batch CSVs gain a trailing review-only `observed_price` column; `apply_batch.py` needs no change because `csv.DictReader` pulls named fields (now covered by `tests/test_apply_batch.py`). § 5a also gained the literal `category` strings, since "Booster Boxes" is `Pokémon Display` in the data and "Theme Decks" is singular.
+- **`llm_batch_normalise.md` amended for step 4 (2026-08-13).** Step 1 now fetches each raw_name's observed price range and sites alongside the name, and a new § 5f uses price to separate product forms — single packs read 4.90–7.29 EUR against 199.90–389.50 EUR for display boxes, and 26% of tracked raw_names are a bare "Booster"/"Boosteri" with no qualifier. § 5f is written form → price and read as an **exclusion filter**: the observed ranges overlap (80.00 EUR is an ETB *and* inside the Japanese-box range), so only "price below a form's floor rules that form out" is sound. Batch CSVs gain a trailing review-only `observed_price` column; `apply_batch.py` needs no change because `csv.DictReader` pulls named fields (now covered by `tests/test_apply_batch.py`). § 5a also gained the literal `category` strings, since "Booster Boxes" is `Pokémon Display` in the data and "Theme Decks" is singular.
   - Price is a **prior, not a rule** — scalped sets break the bands upward. A single Prismatic Evolutions pack lists at 20.95 EUR and a plain Phantasmal Flames ETB at 149.00 EUR, which on price alone would read as a box and a Pokémon Center edition respectively. Both are recorded in the bank as counter-examples.
 - **Two data quirks step 4 will hit.** The step-1 query returns **1,315 rows for 1,304 distinct raw_names** (11 names are listed in both EUR and SEK and the `GROUP BY` includes currency — treat them as one name, prefer the EUR row), and one raw_name is the **empty string** (2 readings, Fantasialinna).
 - **`scripts/calibration_candidates.py` (new) ships with the pipeline.** It implements the prompt's fixed scoring rule (`difflib` ratio, `popularity_rank` ASC tiebreaker) plus a token-overlap hint list, because the whole-string ratio genuinely excludes the correct product for some names — see the step-3 note below.
+- **Step 3 reviewed (2026-08-13) and the review's findings applied.** The hint list had four real defects that steered it wrong: `Pokémon` tokenized to `pok`/`mon` (no accent folding, so every catalog row got two free tokens of overlap), the 2-char codes `m2`/`m5` expanded an Ultra Pro deck box into "Inferno X Booster", `box`/`pack` were treated as noise so pack-vs-box collapsed, and `me025` was unreachable dead code. All fixed with regression tests. On the docs side: the examples file was missing rule 6 from its table, § 5f's price table contradicted its own cited examples, and "five of the 25" off-top-5 was actually **ten** (1, 2, 3, 7, 8, 15, 19, 20, 23, 25) — now asserted by a test that recomputes it from the bank.
 - **Steps 4–6 remain.** All are operator-interactive or destructive; see the runbook.
 
 **Current production mapping state (2026-08-13), for the step-5 diff:** 1,280 mapped / 302 null_mapped / 235 undecided (1,817 rows; 1,911 `price_readings` linked; 1,304 distinct raw_names). This is *not* the ticket-05 state its step-5 text quotes — a later LLM pass has run since.
@@ -109,11 +110,11 @@ for r in c.execute('SELECT id, name, category_name, popularity_rank FROM cardmar
 python scripts/calibration_candidates.py /tmp/curated.jsonl --file names.tsv
 ```
 
-**The top 5 does not always contain the right answer, so let the operator name any id.** The scoring rule the prompt fixes is a whole-string `difflib` ratio, and a long retailer prefix outweighs the set name — for `Scarlet &amp; Violet: Paradox Rift booster` all five candidates are Scarlet & Violet base-set rows and `Paradox Rift Booster` is absent. `calibration_candidates.py` prints a second token-overlap list below the top 5 to recover those cases; five of the 25 examples needed it.
+**The top 5 does not always contain the right answer, so let the operator name any id.** The scoring rule the prompt fixes is a whole-string `difflib` ratio, and a long retailer prefix outweighs the set name — for `Scarlet &amp; Violet: Paradox Rift booster` all five candidates are Scarlet & Violet base-set rows and `Paradox Rift Booster` is absent. `calibration_candidates.py` prints a second token-overlap list below the top 5 to recover those cases; ten of the 25 examples needed it.
 
 Fetch each candidate name's observed price too — it is the decisive pack-vs-box signal and is now part of the recorded examples.
 
-### Step 4 — batch normalisation *(interactive, ~13 batches, longest step)*
+### Step 4 — batch normalisation *(interactive, 14 batches, longest step)*
 
 Paste `copilot_prompts/llm_batch_normalise.md` into a Claude Code session. Per batch of 100 it writes `batch_NNN.csv` then stops. For each batch:
 
@@ -123,7 +124,7 @@ Paste `copilot_prompts/llm_batch_normalise.md` into a Claude Code session. Per b
 
 Quickest review pass: sort on the trailing `observed_price` column and look for a "Booster" mapped at 200+ EUR or a "Booster Box" mapped under 20 EUR. That column is review-only — `apply_batch.py` ignores it.
 
-Also available at the pause: `skip` re-runs the same 100 names, `stop` ends the session. Safe to stop and resume across days — step 2 of the prompt diffs remote raw_names against `draft_mappings.json`, so a fresh session picks up exactly where the last one left off. With ~1,296 distinct raw_names, expect ~13 batches.
+Also available at the pause: `skip` re-runs the same 100 names, `stop` ends the session. Safe to stop and resume across days — step 2 of the prompt diffs remote raw_names against `draft_mappings.json`, so a fresh session picks up exactly where the last one left off. With 1,304 distinct raw_names, expect 14 batches (13 full plus a final batch of 4).
 
 Accumulate mode is keyed on `raw_name`, so re-running a corrected CSV overwrites cleanly.
 
@@ -135,7 +136,7 @@ python scripts/apply_batch.py --finalize
 
 Single transaction on Hetzner: `DELETE FROM name_mappings` → bulk INSERT the whole draft → backfill `price_readings.product_id`. This discards whatever is in `name_mappings` and replaces it wholesale — as of 2026-08-13 that is 1,817 rows of superseded LLM output (see "Progress" above), which is intended.
 
-Only run this once every batch is accumulated. Check `draft_mappings.json` has ~1,296 entries first — finalizing a partial draft leaves every unprocessed raw_name with no mapping row at all.
+Only run this once every batch is accumulated. Check `draft_mappings.json` has 1,304 entries first (one per distinct raw_name as of 2026-08-13 — re-count with the step-1 query if readings have been scraped since) — finalizing a partial draft leaves every unprocessed raw_name with no mapping row at all.
 
 Consider a DB copy on the server beforehand; there is no built-in undo.
 

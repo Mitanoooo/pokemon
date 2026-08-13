@@ -44,6 +44,10 @@ def test_examples_are_numbered_contiguously_from_one(examples):
     "field",
     [
         "**raw_name:**",
+        # llm_batch_normalise.md § 5f uses observed price as its pack-vs-box
+        # discriminator, so an edit that drops the line must fail the suite.
+        "**Sites:**",
+        "**Observed price:**",
         "**Candidates shown:**",
         "**Chosen mapping:**",
         "**Status:**",
@@ -117,3 +121,51 @@ def test_operator_decision_rules_are_documented(doc):
     # llm_batch_normalise.md section 5b2 mirrors these; both cite example numbers.
     for cited in ("example 11", "examples 9 and 10"):
         assert cited in doc
+
+
+def test_rule_table_matches_the_batch_prompt(doc):
+    """The two rule tables must not drift apart.
+
+    § 5b2 of llm_batch_normalise.md is the copy the batch run actually reads;
+    this file is where each rule is justified. A rule present in only one of
+    them is a rule the batch run applies without evidence, or vice versa.
+    """
+    prompt = (_DOC.parent / "llm_batch_normalise.md").read_text(encoding="utf-8")
+
+    def rule_count(text):
+        table = text.split("| # | Situation")[1]
+        rows = [ln for ln in table.splitlines() if re.match(r"^\| \d+ \|", ln)]
+        return len(rows)
+
+    assert rule_count(doc) == rule_count(prompt)
+
+
+def test_off_top_five_claim_matches_the_examples(doc, examples):
+    """The header claims N examples whose chosen id is outside the top 5.
+
+    That count is the stated justification for searching the whole catalog
+    instead of a top-5 shortlist (§ 5c of llm_batch_normalise.md), so it has to
+    be recomputable from the bank rather than asserted.
+    """
+    claimed = re.search(r"In \*\*ten\*\* of the 25 examples\n\(([\d, ]+)\)", doc)
+    assert claimed, "header no longer states which examples are off-top-5"
+    claimed_ns = sorted(int(n) for n in claimed.group(1).split(","))
+
+    actual = []
+    for n, body in sorted(examples.items()):
+        chosen = re.search(r"\*\*Chosen mapping:\*\* (.+)", body).group(1)
+        chosen_id = re.search(r"\(ID: (\d+)\)", chosen)
+        if not chosen_id:  # null_mapped, or undecided with no best guess
+            continue
+        shown = body.split("**Candidates shown:**")[1].split("**Chosen mapping:**")[0]
+        if chosen_id.group(1) not in re.findall(r"\(ID: (\d+)\)", shown):
+            actual.append(n)
+
+    assert claimed_ns == actual
+    assert len(actual) == 10
+
+
+def test_every_example_records_an_observed_price(examples):
+    for n, body in examples.items():
+        price = re.search(r"\*\*Observed price:\*\* (.+)", body).group(1).strip()
+        assert price, f"example {n} has an empty observed price"

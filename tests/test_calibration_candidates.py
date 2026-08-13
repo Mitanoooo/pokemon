@@ -35,8 +35,38 @@ def test_tokenize_drops_noise_tokens(mod):
     assert mod.tokenize("Pokemon TCG Pitch Black 3 kpl") == {"pitch", "black", "3"}
 
 
-def test_tokenize_handles_accented_brand_spelling(mod):
-    assert "pokémon" not in mod.tokenize("Pokémon Pitch Black")
+# ── accent folding ────────────────────────────────────────────────────────────
+# tokenize matches [a-z0-9]+, so an accented word would otherwise break into
+# fragments ("pokémon" -> "pok", "mon") that no NOISE_TOKENS entry can reach --
+# handing every catalog row containing "Pokémon" two free tokens of overlap.
+
+def test_fold_strips_diacritics(mod):
+    assert mod.fold("Pokémon") == "pokemon"
+
+
+def test_tokenize_drops_accented_brand_name_as_noise(mod):
+    assert mod.tokenize("Pokémon Pitch Black") == {"pitch", "black"}
+
+
+def test_tokenize_yields_nothing_for_an_all_noise_accented_name(mod):
+    assert mod.tokenize("Pokémon TCG") == set()
+
+
+def test_tokenize_folds_accents_in_catalog_names_too(mod):
+    assert mod.tokenize("Pitch Black Pokémon Center Elite Trainer Box") == {
+        "pitch", "black", "center", "elite", "trainer", "box",
+    }
+
+
+# ── pack vs box must stay distinguishable ─────────────────────────────────────
+# Pack-vs-box is the most common mapping error, so "box" is not a noise token.
+
+def test_tokenize_keeps_product_form_words(mod):
+    assert mod.tokenize("Chaos Rising Booster") != mod.tokenize("Chaos Rising Booster Box")
+
+
+def test_tokenize_keeps_box(mod):
+    assert "box" in mod.tokenize("Chaos Rising Booster Box")
 
 
 # ── expand_codes ──────────────────────────────────────────────────────────────
@@ -50,8 +80,18 @@ def test_expand_codes_leaves_unknown_tokens_alone(mod):
     assert mod.expand_codes({"zz99"}) == {"zz99"}
 
 
-def test_expand_codes_decodes_japanese_subset_code(mod):
-    assert mod.expand_codes({"m5"}) == {"m5", "abyss", "eye"}
+def test_expand_codes_ignores_two_char_japanese_subset_codes(mod):
+    # "m2" collides with accessory model codes -- MaxGaming's "Ultra Pro Charmander
+    # M2 Deck Box" is a plastic deck box, and expanding it to "Inferno X" put
+    # sealed booster rows at the top of the hint list for a null_mapped listing.
+    assert mod.expand_codes({"m2"}) == {"m2"}
+    assert mod.expand_codes({"m5"}) == {"m5"}
+
+
+def test_expand_codes_has_no_unreachable_keys(mod):
+    """Every SET_CODES key must survive tokenize, or its entry is dead code."""
+    unreachable = [code for code in mod.SET_CODES if mod.tokenize(code) != {code}]
+    assert unreachable == []
 
 
 # ── top_candidates ────────────────────────────────────────────────────────────
@@ -156,6 +196,56 @@ def test_load_catalog_exits_on_empty_file(mod, tmp_path):
         mod.load_catalog(path)
 
 
+# ── --file parsing ────────────────────────────────────────────────────────────
+
+def _run_cli(mod, monkeypatch, capsys, argv):
+    monkeypatch.setattr("sys.argv", ["calibration_candidates.py", *argv])
+    mod.main()
+    return capsys.readouterr().out
+
+
+@pytest.fixture()
+def catalog_file(tmp_path):
+    path = tmp_path / "curated.jsonl"
+    path.write_text(
+        json.dumps(_p(885547, "Pitch Black Booster", rank=3)) + "\n"
+        + json.dumps(_p(885545, "Pitch Black Booster Box", "Pokémon Display", rank=1)) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_cli_reads_name_sites_and_price_columns(mod, tmp_path, catalog_file, monkeypatch, capsys):
+    names = tmp_path / "names.tsv"
+    names.write_text("Pitch Black Booster\tPrisma\t5.95 EUR\n", encoding="utf-8")
+    out = _run_cli(mod, monkeypatch, capsys, [str(catalog_file), "--file", str(names)])
+    assert "Sites: Prisma" in out
+    assert "Observed price: 5.95 EUR" in out
+
+
+def test_cli_tolerates_a_name_only_file(mod, tmp_path, catalog_file, monkeypatch, capsys):
+    names = tmp_path / "names.tsv"
+    names.write_text("Pitch Black Booster\n\nPitch Black Booster Box\n", encoding="utf-8")
+    out = _run_cli(mod, monkeypatch, capsys, [str(catalog_file), "--file", str(names)])
+    assert "Calibration [1/2]" in out and "Calibration [2/2]" in out
+    assert "Sites:" not in out
+
+
+def test_cli_strips_stray_whitespace_around_fields(mod, tmp_path, catalog_file, monkeypatch, capsys):
+    names = tmp_path / "names.tsv"
+    names.write_text("  Pitch Black Booster \t Prisma \n", encoding="utf-8")
+    out = _run_cli(mod, monkeypatch, capsys, [str(catalog_file), "--file", str(names)])
+    # a trailing space on the raw_name would shift every difflib ratio
+    assert "Calibration [1/1]: Pitch Black Booster\n" in out
+    assert "Sites: Prisma\n" in out
+
+
+def test_cli_requires_a_name_or_file(mod, monkeypatch, catalog_file):
+    monkeypatch.setattr("sys.argv", ["calibration_candidates.py", str(catalog_file)])
+    with pytest.raises(SystemExit):
+        mod.main()
+
+
 # ── render ────────────────────────────────────────────────────────────────────
 
 def test_render_includes_ids_ranks_and_the_hint_section(mod):
@@ -174,3 +264,17 @@ def test_render_omits_hint_section_when_top_five_covers_everything(mod):
     products = [_p(1, "Pitch Black Booster", rank=1)]
     out = mod.render("Pitch Black Booster", 1, 1, "", products)
     assert "Also in catalog" not in out
+
+
+# llm_calibrate.md's operator block mandates an observed-price line, so render
+# has to be able to produce one.
+
+def test_render_shows_observed_price_when_given(mod):
+    products = [_p(1, "Pitch Black Booster", rank=1)]
+    out = mod.render("Pitch Black Booster", 1, 1, "", products, price="5.95 EUR")
+    assert "Observed price: 5.95 EUR" in out
+
+
+def test_render_omits_price_line_when_absent(mod):
+    products = [_p(1, "Pitch Black Booster", rank=1)]
+    assert "Observed price" not in mod.render("Pitch Black Booster", 1, 1, "", products)

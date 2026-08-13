@@ -18,3 +18,5 @@ draft_mappings.json
 
 # derived by extract_catalog.py from the catalog_*.txt dumps + cardmarket_catalogue.json
 catalog_scrape.json
+# the raw Cardmarket export it reads (multi-MB, re-fetchable)
+cardmarket_catalogue.json

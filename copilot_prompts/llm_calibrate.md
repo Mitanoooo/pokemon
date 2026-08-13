@@ -113,7 +113,7 @@ Work through the 25 raw_names **one at a time**. For each raw_name:
    python scripts/calibration_candidates.py /tmp/curated.jsonl --file names.tsv
    ```
 
-   **The top 5 frequently does not contain the right answer.** The ratio is whole-string, so a long retailer prefix outweighs the set name — for `Scarlet &amp; Violet: Paradox Rift booster` every one of the five is a Scarlet & Violet base-set row and `Paradox Rift Booster` is absent. Five of the 25 shipped examples were like this. The script prints a second token-overlap list below the top 5 for exactly this reason; tell the operator they may name **any** product id, not just 1–5.
+   **The top 5 frequently does not contain the right answer.** The ratio is whole-string, so a long retailer prefix outweighs the set name — for `Scarlet &amp; Violet: Paradox Rift booster` every one of the five is a Scarlet & Violet base-set row and `Paradox Rift Booster` is absent. Ten of the 25 shipped examples were like this. The script prints a second token-overlap list below the top 5 for exactly this reason; tell the operator they may name **any** product id, not just 1–5.
 
 2. **Present to the operator.** Display the following block and then **stop and wait for the operator to reply before proceeding**:
 

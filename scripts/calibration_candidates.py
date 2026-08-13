@@ -13,7 +13,14 @@ The curated catalog is read from a JSONL dump (one ``{"id","name","category",
 Usage::
 
     python scripts/calibration_candidates.py curated.jsonl "Pitch Black Booster Box"
-    python scripts/calibration_candidates.py curated.jsonl --file names.txt
+    python scripts/calibration_candidates.py curated.jsonl --file names.tsv
+
+``names.tsv`` is ``raw_name<TAB>sites<TAB>price``, the last two optional. Build it
+from the same DB (see ``copilot_prompts/llm_calibrate.md`` step 1)::
+
+    SELECT raw_name, GROUP_CONCAT(DISTINCT s.name), MAX(price) || ' ' || currency
+    FROM price_readings pr LEFT JOIN sites s ON s.id = pr.site_id
+    GROUP BY raw_name
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ import argparse
 import json
 import re
 import sys
+import unicodedata
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -30,9 +38,13 @@ HINT_N = 8
 
 # Words that carry no discriminating signal for the token-overlap hint list --
 # they appear in most raw_names, most catalog names, or both.
+#
+# "box", "pack" and "packs" are deliberately NOT noise: pack-vs-box is the most
+# common mapping error, so dropping those words would make "Chaos Rising Booster"
+# and "Chaos Rising Booster Box" tokenize identically.
 NOISE_TOKENS = frozenset(
     """
-    pokemon pokémon tcg the of and a s pcs kpl st box pack packs
+    pokemon tcg the of and a s pcs kpl st
     """.split()
 )
 
@@ -61,14 +73,35 @@ SET_CODES = {
     "sv2a": "151",
     "sv11b": "Black Bolt",
     "sv11w": "White Flare",
-    "m5": "Abyss Eye",
-    "m2": "Inferno X",
     "bst": "Booster",
 }
 
+# Deliberately absent: the two-character Japanese sub-set codes "m2" (Inferno X)
+# and "m5" (Abyss Eye). They collide with accessory model codes -- MaxGaming's
+# "Ultra Pro Charmander M2 Deck Box" is a plastic deck box, and expanding m2
+# there put "Inferno X Booster" at the top of the hint list for a listing whose
+# correct answer is null_mapped. Retailers that use these codes spell the sub-set
+# name out anyway ("Abyss Eye (M5)"), so nothing observed is lost.
+#
+# Half-set codes like "ME02.5" cannot be expanded either: tokenize splits on the
+# dot, leaving "me02" -- which would inject the wrong expansion (Phantasmal
+# Flames for an Ascended Heroes listing). Match those on the set name instead.
+
+
+def fold(text: str) -> str:
+    """Lowercase and strip diacritics so "Pokémon" folds to "pokemon".
+
+    ``tokenize`` matches ``[a-z0-9]+``, so without this an accented word breaks
+    into fragments ("pokémon" -> "pok", "mon") that no NOISE_TOKENS entry can
+    reach -- handing every catalog row containing "Pokémon" two free tokens.
+    """
+    return "".join(
+        c for c in unicodedata.normalize("NFKD", text.lower()) if not unicodedata.combining(c)
+    )
+
 
 def tokenize(text: str) -> set[str]:
-    return {t for t in re.findall(r"[a-z0-9]+", text.lower()) if t not in NOISE_TOKENS}
+    return {t for t in re.findall(r"[a-z0-9]+", fold(text)) if t not in NOISE_TOKENS}
 
 
 def expand_codes(tokens: set[str]) -> set[str]:
@@ -125,18 +158,27 @@ def token_hints(
             continue
         # coverage of the raw_name's tokens, then catalog-name brevity, then rank
         coverage = len(shared) / len(needle)
-        scored.append((-coverage, len(tokenize(p["name"])), p["rank"] or 10**9, p, coverage))
+        rank = p["rank"] if p["rank"] is not None else 10**9
+        scored.append((-coverage, len(tokenize(p["name"])), rank, p, coverage))
     scored.sort(key=lambda t: t[:3])
     return [dict(row[3], coverage=round(row[4], 2)) for row in scored[:hint_n]]
 
 
 def render(
-    raw_name: str, index: int, total: int, sites: str, products: list[dict], hint_n: int = HINT_N
+    raw_name: str,
+    index: int,
+    total: int,
+    sites: str,
+    products: list[dict],
+    hint_n: int = HINT_N,
+    price: str = "",
 ) -> str:
     bar = "─" * 61
     lines = [bar, f"Calibration [{index}/{total}]: {raw_name}"]
     if sites:
         lines.append(f"Sites: {sites}")
+    if price:
+        lines.append(f"Observed price: {price}")
     lines.append("")
     lines.append("Candidates:")
     shown = top_candidates(raw_name, products)
@@ -165,7 +207,8 @@ def main() -> None:
     ap.add_argument(
         "--file",
         type=Path,
-        help="file of raw_names, one per line; 'raw_name\\tsites' also accepted",
+        help="TSV of raw_names, one per line; optional 2nd and 3rd columns are "
+        "sites and observed price ('raw_name\\tsites\\tprice')",
     )
     ap.add_argument(
         "--hints",
@@ -182,15 +225,18 @@ def main() -> None:
         for line in args.file.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
-            name, _, sites = line.partition("\t")
-            entries.append((name, sites))
+            # strip per field: a spreadsheet export can leave stray whitespace,
+            # and a raw_name with a trailing space shifts every difflib ratio
+            fields = [f.strip() for f in line.split("\t")]
+            fields += [""] * (3 - len(fields))
+            entries.append(tuple(fields[:3]))
     elif args.raw_name:
-        entries = [(args.raw_name, "")]
+        entries = [(args.raw_name, "", "")]
     else:
         ap.error("pass a raw_name or --file")
 
-    for i, (name, sites) in enumerate(entries, start=1):
-        print(render(name, i, len(entries), sites, products, args.hints))
+    for i, (name, sites, price) in enumerate(entries, start=1):
+        print(render(name, i, len(entries), sites, products, args.hints, price))
         print()
 
 

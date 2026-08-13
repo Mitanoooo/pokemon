@@ -172,7 +172,7 @@ Rule 3 has a known, accepted consequence: a case price is 6–12× the single-un
 When assessing a raw_name:
 
 1. **Strip retailer noise first.** Search on what is left, not on the raw string. Noise seen in production: brand prefixes concatenated without separators (`PokémonScarlet & Violet 10: ...`), era prefixes that are not the set name (`Scarlet & Violet: Paradox Rift booster` — the set is Paradox Rift), un-decoded HTML entities (`&amp;`), release dates (`REL 17/7`), purchase limits (`MAX 1 kpl/asiakas`), and filler nouns (`Keräilykortit`). Set codes must be decoded: `ME01`–`ME05` are Mega Evolution / Phantasmal Flames / Perfect Order / Chaos Rising / Pitch Black; `SVn` numbers the Scarlet & Violet sets; Japanese sub-sets like `M5` (Abyss Eye) are named directly by Cardmarket, so match the sub-set and drop the umbrella name.
-2. Search the **whole catalog**. Do not rank by string similarity and stop at the top few — a long retailer prefix pushes the correct row well down. In calibration examples 7, 8, 15, 19 and 25 the correct product is absent from the top five by `difflib` ratio entirely.
+2. Search the **whole catalog**. Do not rank by string similarity and stop at the top few — a long retailer prefix pushes the correct row well down. In ten of the 25 calibration examples (1, 2, 3, 7, 8, 15, 19, 20, 23 and 25) the correct product is absent from the top five by `difflib` ratio entirely.
 3. If two or more candidates are equally plausible, **prefer the one with the lower `popularity_rank`** (i.e., the more popular product). The catalog is already sorted by `popularity_rank` ASC, so earlier entries are preferred by default. This prior loses to any explicit product-type word in the listing — see 5f and example 22.
 4. If no candidate is plausible and the raw_name clearly refers to an in-scope sealed product that is simply absent from the curated catalog, still assign `null_mapped` — do not force a low-confidence match to a wrong product.
 
@@ -210,21 +210,27 @@ Those 25 were chosen because a naive match gets them wrong. Every one encodes a 
 
 Every raw_name arrives from Step 1 with `price_min` / `price_max`. Use it to choose between product *forms* of the same set — this is where mapping most often goes wrong, because "Booster" alone appears in ~26% of tracked raw_names with no qualifier.
 
-Rough bands observed in production. **They are EUR.** A small number of readings are SEK (11 raw_names, all also listed in EUR) — divide a SEK figure by roughly 11 before comparing it to the table, or just use that name's EUR reading:
+**Read the table in the form → price direction, never price → form.** The ranges overlap far too much to invert: 80.00 EUR is a Pitch Black ETB (example 1) *and* squarely inside the Japanese-booster-box range, and 41.95 EUR is a Simplified Chinese booster box (example 8) *and* inside the ETB range. Use price to **exclude** forms a candidate cannot be, then let the listing text choose among what is left.
 
-| Observed price | Likely form |
-|---|---|
-| < 4 | Not a sealed product — a box-break or Rip & Ship slot (rule 6) |
-| 4–12 | Single booster pack |
-| 8–25 | Blister / checklane blister / mini tin |
-| 25–60 | Booster bundle, ETB, tin, collector chest, League Battle Deck |
-| 80–120 | Japanese or Chinese booster box |
-| 150–400 | English 18- or 36-pack display box |
-| > 500 | Multi-unit case — apply rule 3 and map to the single-unit row anyway |
+Per-form ranges observed across the calibration bank. **They are EUR.** A small number of readings are SEK (11 raw_names, all also listed in EUR) — divide a SEK figure by roughly 11 before comparing, or just use that name's EUR reading:
 
-**This is a prior, not a rule.** Heavily scalped sets break the bands upward: a single Prismatic Evolutions pack lists at 20.95 EUR (example 16) and a plain Phantasmal Flames ETB at 149.00 EUR (example 15), which alone would argue for a display box and a Pokémon Center edition respectively. When price and an explicit product-type word in the listing disagree, the listing text wins; when the listing is silent on form, price decides.
+| Form | Typical | Seen as low as | Seen as high as |
+|---|---|---|---|
+| Box-break / Rip & Ship slot (rule 6) | 3–4 | 3.90 (ex 10) | 3.98 (ex 9) |
+| Single booster pack | 5–8 | 4.90 (ex 19) | 20.95 (ex 16, scalped) |
+| Blister / checklane blister / mini tin | 9–22 | 8.95 (ex 4) | 21.95 (ex 3) |
+| Bundle, ETB, tin, collector chest, League Battle Deck | 33–80 | 32.95 (ex 17) | 149.00 (ex 15) |
+| Japanese or Chinese booster box | 42–91 | 41.95 (ex 8) | 90.95 (ex 7) |
+| English 18- or 36-pack display box | 200–390 | 199.90 (ex 24) | 389.50 (ex 22) |
+| Multi-unit case — rule 3 still applies | 500+ | 949.11 (ex 11) | — |
 
-Two useful sanity checks it does catch: a "Booster" at 389.50 EUR is a display box (example 22), and a "Booster Box" at 199.90 EUR is the standard 36-pack rather than the 18-pack variant (example 24).
+How to use it:
+
+- **Exclude downward.** A price below a form's observed floor rules that form out: at 5.95 EUR nothing but a single pack is possible (example 2), and at 389.50 EUR a single pack is not (example 22 — a bare "Booster laatikko" that is the display box).
+- **Do not exclude upward.** Scalping pushes prices up, never down. A single Prismatic Evolutions pack lists at 20.95 EUR (example 16) and a plain ETB at 149.00 EUR (example 15) — read naively as price → form, those become a blister and a display box.
+- **The listing text wins any disagreement.** Price only decides when the listing is silent on form, which is the common case for the ~26% bare "Booster" names.
+
+The gaps between rows (roughly 23–32, 92–199, 391–499) are unobserved, not impossible. A price landing in one is not evidence for anything — fall back to the listing text.
 
 ---
 

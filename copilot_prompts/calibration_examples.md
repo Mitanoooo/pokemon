@@ -19,20 +19,21 @@ use the worked examples for the matching style and the wording of the distinctio
 
 Candidate lists are the real output of the step-3 scorer
 (`scripts/calibration_candidates.py`: `difflib.SequenceMatcher` ratio on lowercased
-names, `popularity_rank` ascending as tiebreaker). In several examples the correct
-product **does not appear in the top five at all** — that is the point of those
-examples, and it is why the batch prompt searches the whole catalog rather than a
-top-5 shortlist.
+names, `popularity_rank` ascending as tiebreaker). In **ten** of the 25 examples
+(1, 2, 3, 7, 8, 15, 19, 20, 23, 25) the chosen product **does not appear in the top
+five at all** — that is the point of those examples, and it is why the batch prompt
+searches the whole catalog rather than a top-5 shortlist.
 
 ## Operator decision rules
 
-| # | Situation | Rule |
-|---|---|---|
-| 1 | Retailer ships "1 of N random selection" | `null_mapped` — no single row is the product sold |
-| 2 | Product family is certain but the featured Pokémon is unnamed | `undecided`, with the lowest-rank variant as best guess |
-| 3 | Retailer sells a multi-unit case (`Case (12)`, `Booster Box (6)`) | Map to the **single-unit** row |
-| 4 | Catalog has both a plain and a Pokémon Center edition | Prefer the **plain** retail edition |
-| 5 | Bare "Booster" / "Boosteri" / "Boosterpakkaus", no box qualifier | The single-pack `<Set> Booster` row |
+| # | Situation | Rule | Examples |
+|---|---|---|---|
+| 1 | Retailer ships "1 of N random selection" | `null_mapped` — no single row is the product sold | 5, 6, 12 |
+| 2 | Product family is certain but the featured Pokémon is unnamed | `undecided`, with the lowest-rank variant as best guess | 3, 4, 11, 23 |
+| 3 | Retailer sells a multi-unit case (`Case (12)`, `Booster Box (6)`) | Map to the **single-unit** row | 11 |
+| 4 | Catalog has both a plain and a Pokémon Center edition | Prefer the **plain** retail edition | 15 |
+| 5 | Bare "Booster" / "Boosteri" / "Boosterpakkaus", no box qualifier | The single-pack `<Set> Booster` row | 2, 16, 19, 20, 21 |
+| 6 | Listing sells a service, not a product ("BOX BREAK", "Rip & Ship") | `null_mapped` — the buyer receives loose cards | 9, 10 |
 
 Rule 2 outranks rule 3: a case of an unnamed variant is `undecided` (example 11).
 
