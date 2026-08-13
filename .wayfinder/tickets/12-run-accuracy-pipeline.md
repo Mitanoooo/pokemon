@@ -11,7 +11,7 @@ Execute the full accuracy overhaul pipeline end-to-end:
 5. Once all batches are done, run `apply_batch.py --finalize`
 6. Report final `name_mappings` counts (mapped / null_mapped / undecided) and `price_readings` backfill count
 
-**Status: OPEN — steps 1–3 done 2026-08-13, steps 4–6 remain.** All four blockers (08, 09, 10, 11) are closed. Mostly execution, but step 3 forced two prompt amendments (see Progress).
+**Status: CLOSED — all six steps done 2026-08-13.** All four blockers (08, 09, 10, 11) were closed. Mostly execution, but step 3 forced two prompt amendments and step 4 amended rule 3 (see Progress). Final counts in Resolution below.
 
 Blocked by: 08, 09, 10, 11 — all closed
 
@@ -32,7 +32,12 @@ Blocked by: 08, 09, 10, 11 — all closed
 - **Two data quirks step 4 will hit.** The step-1 query returns **1,315 rows for 1,304 distinct raw_names** (11 names are listed in both EUR and SEK and the `GROUP BY` includes currency — treat them as one name, prefer the EUR row), and one raw_name is the **empty string** (2 readings, Fantasialinna).
 - **`scripts/calibration_candidates.py` (new) ships with the pipeline.** It implements the prompt's fixed scoring rule (`difflib` ratio, `popularity_rank` ASC tiebreaker) plus a token-overlap hint list, because the whole-string ratio genuinely excludes the correct product for some names — see the step-3 note below.
 - **Step 3 reviewed (2026-08-13) and the review's findings applied.** The hint list had four real defects that steered it wrong: `Pokémon` tokenized to `pok`/`mon` (no accent folding, so every catalog row got two free tokens of overlap), the 2-char codes `m2`/`m5` expanded an Ultra Pro deck box into "Inferno X Booster", `box`/`pack` were treated as noise so pack-vs-box collapsed, and `me025` was unreachable dead code. All fixed with regression tests. On the docs side: the examples file was missing rule 6 from its table, § 5f's price table contradicted its own cited examples, and "five of the 25" off-top-5 was actually **ten** (1, 2, 3, 7, 8, 15, 19, 20, 23, 25) — now asserted by a test that recomputes it from the bank.
-- **Steps 4–6 remain.** All are operator-interactive or destructive; see the runbook.
+- **Step 4 done (2026-08-13).** All 14 batches written and accumulated; `draft_mappings.json` holds 1,304 entries, one per distinct remote raw_name, and the local draft/remote diff is empty in both directions. `batch_014.csv` (the final 4 names) had been written but not accumulated — the last run stopped between the write and the `apply_batch.py` call, which the step-2 diff caught on resume exactly as designed.
+  - Draft validated before finalize: 0 `mapped` rows with a null id, 0 `null_mapped` rows carrying an id, 0 rows outside the three statuses, no missing confidences, every `mapped`/`null_mapped` at ≥ 0.85 and every `undecided` below it. All 348 distinct product ids resolve to real `is_curated = 1` rows.
+  - 348 distinct ids across 831 id-bearing rows is heavy reuse and is correct: one product collects up to 20 retailer spellings (`885547 Pitch Black Booster` covers "Mega Evolution Pitch Black (ME05)", "Poke ME05 Booster REL 17/7", "Pitch Black Boosteri", …). Collapsing those variants is the point of the table.
+- **Step 5 done (2026-08-13).** Backup first, then one `--finalize` run: 1,817 old rows deleted, 1,304 inserted, `price_readings.product_id` backfilled.
+  - **A plain `cp` of `pokemon.db` is not a valid backup on this server.** The DB is in WAL mode and the WAL was 993 KB at the time — a file copy of the `.db` alone silently omits it. The backup was retaken with SQLite's `src.backup(dst)` API and verified (1,817 `name_mappings`, 2,581 `price_readings`, 1,911 linked, `integrity_check` = ok) at `/opt/pokemon/pokemon.db.pre-ticket12-finalize`. Use the backup API, not `cp`, for any future restore point here.
+- **Step 6 done (2026-08-13).** Counts and the UI queue check are in Resolution below.
 
 **Current production mapping state (2026-08-13), for the step-5 diff:** 1,280 mapped / 302 null_mapped / 235 undecided (1,817 rows; 1,911 `price_readings` linked; 1,304 distinct raw_names). This is *not* the ticket-05 state its step-5 text quotes — a later LLM pass has run since.
 
@@ -145,3 +150,44 @@ Consider a DB copy on the server beforehand; there is no built-in undo.
 Record final `name_mappings` counts by status and the backfill count in this ticket's resolution. Caveat: the printed "Backfilled: N price_readings rows" counts rows touched, not rows linked (see ticket 11's known wart) — for the real number, query `SELECT COUNT(*) FROM price_readings WHERE product_id IS NOT NULL`.
 
 Then check the Mapping Review UI (`app/views/mappings.py`) for the residual `undecided` queue — it should be far smaller than the previous 728, since `undecided` is now reserved for uninterpretable text rather than low confidence.
+
+---
+
+## Resolution *(2026-08-13)*
+
+### Final `name_mappings` — 1,304 rows, one per distinct raw_name
+
+| Status | Before | After | Δ |
+|---|---|---|---|
+| `mapped` | 1,280 | **726** | −554 |
+| `null_mapped` | 302 | **468** | +166 |
+| `undecided` | 235 | **110** | −125 |
+| **Total** | 1,817 | **1,304** | −513 |
+
+The 1,817 → 1,304 drop is not data loss: the old table had accumulated multiple rows per raw_name across successive LLM passes, and the new one is exactly one row per distinct raw_name.
+
+### `price_readings` backfill
+
+| Metric | Before | After |
+|---|---|---|
+| Total readings | 2,581 | 2,581 |
+| **Linked (`product_id IS NOT NULL`)** | 1,911 | **1,426** |
+| Unlinked | 670 | 1,155 |
+
+`apply_batch.py` printed "Backfilled: 2581" — that is rows *touched* (the `UPDATE` has no `WHERE`, so it rewrites every row, ticket 11's known wart). The real linked figure is **1,426**, from `SELECT COUNT(*) FROM price_readings WHERE product_id IS NOT NULL`.
+
+**Linked count went down by 485, and that is the overhaul working.** Those readings were previously linked to *wrong* products. `null_mapped` nearly doubled because the old pass force-matched non-TCG junk, singles, box-break services and random-assortment listings onto real sealed products; each of those now correctly resolves to no product. A reading count of 1,426 that is right beats 1,911 where a large share pointed at the wrong SKU — that inaccuracy is the reason this ticket exists. Readings now split 1,426 `mapped` / 940 `null_mapped` / 215 `undecided`.
+
+### Integrity checks on the finalized table
+
+All clean: 0 readings with no `name_mappings` row, 0 `mapped` rows with a NULL `cardmarket_product_id`, 0 `mapped` ids that are missing or not `is_curated = 1`, and 0 `undecided` rows with `cardmarket_product_id` set (their best guess correctly lives in `llm_suggestion_id`).
+
+### Mapping Review UI queue
+
+`get_undecided_mappings` (`scraper/db.py:132`) returns **110 rows — down from 728**, covering 215 readings. 105 of the 110 arrive with a pre-filled `llm_suggestion_id`, so the operator confirms a dropdown rather than searching; only 5 have no suggestion at all. The queue is now what `undecided` was redefined to mean: unnamed-variant blisters/mini tins/checklanes where the catalog splits per featured Pokémon (`Poke Kiosk Blister ME05 REL 17/7`), plus the one empty-string raw_name.
+
+### Follow-ups, none blocking
+
+- **Two real sealed products will stay `null_mapped` until the next re-scrape** — `CBB1C: Gem Pack Vol. 1` and `WCD 2025: Riley McKay`, 2 readings each. Absent from the 2026-08-10 `cardmarket_catalogue.json` export; see step 1a.
+- **The backfill `UPDATE` should carry a `WHERE product_id IS NOT NULL OR ...` guard** so its `rowcount` reports rows linked rather than rows touched. Cosmetic, but it made the finalize output read as a 2,581-row success.
+- **Restore point:** `/opt/pokemon/pokemon.db.pre-ticket12-finalize` on Hetzner. Safe to delete once the new mappings have been reviewed in the UI.
