@@ -56,8 +56,10 @@ class Stats:
     unresolved: int = 0
     duplicates: int = 0
     ambiguous: int = 0
+    rescued: int = 0
     pages: int = 0
     unresolved_slugs: list[str] = field(default_factory=list)
+    rescues: list[tuple[str, str]] = field(default_factory=list)
 
 
 # Each scraped category and the dump file it was saved to.
@@ -108,6 +110,29 @@ def clean_label(label: str) -> str:
     return label
 
 
+# Below this, a label suffix is too generic to trust: the catalogue really does contain
+# rows named just "Booster", so a single trailing word would mis-attach an id.
+_MIN_SUFFIX_WORDS = 2
+
+
+def label_candidates(
+    label: str,
+    index: dict[tuple[int, str], list[dict]],
+    id_category: int,
+) -> list[dict]:
+    """Resolve a product from its listing label when the slug is unusable.
+
+    Labels arrive as expansion name + product name, so the catalogue name is a trailing
+    run of words. Tries the longest suffix first and stops at the first hit.
+    """
+    words = label.split()
+    for start in range(len(words) - _MIN_SUFFIX_WORDS + 1):
+        candidates = index.get((id_category, fold(" ".join(words[start:]))))
+        if candidates:
+            return candidates
+    return []
+
+
 def build_index(products: list[dict]) -> dict[tuple[int, str], list[dict]]:
     """Index catalogue products by (idCategory, folded name), lowest idProduct first."""
     index: dict[tuple[int, str], list[dict]] = {}
@@ -142,12 +167,22 @@ def resolve_category(
         seen.add(key)
 
         candidates = index.get((category.id_category, key), [])
+        rescued = False
+        if not candidates:
+            # Some slugs omit a word ("Poke-Ball-Tin" for "Generic Poké Ball Tin") or are
+            # outright broken ("LocExpansionName-..."), but the label still names the product.
+            candidates = label_candidates(entry.label, index, category.id_category)
+            rescued = bool(candidates)
+
         if candidates:
             stats.matched += 1
             if len(candidates) > 1:
                 stats.ambiguous += 1
             product_id = candidates[0]["idProduct"]
             name = candidates[0]["name"]
+            if rescued:
+                stats.rescued += 1
+                stats.rescues.append((entry.slug, name))
         else:
             stats.unresolved += 1
             stats.unresolved_slugs.append(entry.slug)
@@ -227,6 +262,12 @@ def _print_summary(stats_by_category: dict[str, Stats], total: int, nulls: int) 
     ambiguous = sum(s.ambiguous for s in stats_by_category.values())
     if ambiguous:
         print(f"  Ambiguous names resolved to lowest product id: {ambiguous}")
+
+    rescues = [r for s in stats_by_category.values() for r in s.rescues]
+    if rescues:
+        print(f"\nResolved via listing label, slug was unusable ({len(rescues)}) — check these:")
+        for slug, name in rescues:
+            print(f"  {slug}\n    -> {name}")
 
 
 def main() -> None:

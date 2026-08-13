@@ -35,7 +35,7 @@ Consult `/domain-modeling` and `/grilling` skills when resolving tickets.
 
 Every artefact ticket (01–11) is closed. Ticket 12 is pure execution and cannot be fully automated: step 1 requires an operator to pass the Cardmarket captcha in a Copilot browser session, and steps 3–4 are interactive by design (calibration answers, per-batch CSV review).
 
-The 2026-08-13 scrape landed as 8 `catalog_<category>.txt` dumps with no product ids rather than `catalog_scrape.json`, so `scripts/extract_catalog.py` was added to recover ids by slug-folding against `cardmarket_catalogue.json` (1,942 / 1,960 resolved). Catalog curation is now live on Hetzner: 1,942 rows at `is_curated=1`.
+The 2026-08-13 scrape landed as 8 `catalog_<category>.txt` dumps with no product ids rather than `catalog_scrape.json`, so `scripts/extract_catalog.py` was added to recover ids by slug-folding against `cardmarket_catalogue.json` (1,948 / 1,960 resolved). Catalog curation is now live on Hetzner: 1,948 rows at `is_curated=1`.
 
 ## Decisions so far
 

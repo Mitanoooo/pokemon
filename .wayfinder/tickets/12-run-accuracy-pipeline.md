@@ -19,8 +19,8 @@ Blocked by: 08, 09, 10, 11 — all closed
 
 - **Step 1 done (2026-08-13), with a deviation.** The browser session saved 8 plain-text dumps in the project root (`catalog_boosters.txt`, `catalog_booster_boxes.txt`, …) instead of one `catalog_scrape.json`. Each line is a link label plus a product URL; the listing pages never exposed the integer product id, so the dumps carry no `cardmarket_product_id` at all.
   - `scripts/extract_catalog.py` (new) converts the dumps to `catalog_scrape.json` in the ticket-07 schema, recovering ids by joining each product's URL slug to `cardmarket_catalogue.json`. See "Step 1a" below.
-  - Result: **1,960 products, 1,942 with ids, 18 null.** Passes the step-1 sanity check.
-- **Step 2 done (2026-08-13).** `matched: 1942`, `not_found: 0`. Verified on Hetzner: 1,942 rows at `is_curated=1`, ranks 1–300, popularity order intact (Boosters rank 1 = "Destined Rivals Booster"). Per-category: Boosters 297, Theme Decks 296, Booster Boxes 296, Blisters 295, Tins 295, Box Sets 294, Elite Trainer Boxes 157, Trainer Kits 12.
+  - Result: **1,960 products, 1,948 with ids, 12 null.** Passes the step-1 sanity check.
+- **Step 2 done (2026-08-13).** `matched: 1948`, `not_found: 0`. Verified on Hetzner: 1,948 rows at `is_curated=1`, ranks 1–300, popularity order intact (Boosters rank 1 = "Destined Rivals Booster").
   - `not_found: 0` means the base catalogue did **not** need re-importing — every resolvable product was already in the 5,006-row import.
 - **Steps 3–6 remain.** All are operator-interactive or destructive; see the runbook.
 
@@ -52,12 +52,21 @@ python scripts/extract_catalog.py          # dumps in cwd -> catalog_scrape.json
 
 Cardmarket's product URL slug is derived from the product name, but drops some punctuation outright (`McDonald's` → `McDonalds`, `CSV9.5C` → `CSV95C`) while turning other runs into hyphens. The script folds both the slug and each `cardmarket_catalogue.json` name down to bare lowercase alphanumerics, then joins on `(id_category, folded name)`. That resolved 1,942 / 1,960 (99.0%) on the first run.
 
-Two things the script handles that are worth knowing about:
+**The slug is not always usable, so the listing label is the fallback.** Six products on the 2026-08-13 run had a slug that no fold can bridge — it omitted a word (`Poke-Ball-Tin` for "Generic Poké Ball Tin", `Regieleki-V-Collection` for "Crown Zenith: Regieleki V Collection"), dropped diacritics instead of transliterating them (`Ondej` for "Ondřej"), or was outright broken (`LocExpansionName-Blitzle-1-Pack-Blister`, a Cardmarket templating bug). Listing labels are expansion name + product name, so the real catalogue name is a trailing run of the label's words; the script tries the longest such suffix first, down to a floor of two words. One-word suffixes are refused because the catalogue genuinely contains rows named just "Booster". Every rescue is printed under "Resolved via listing label" — a short list, worth eyeballing since it is the one heuristic step in an otherwise exact join.
+
+Three things the script handles that are worth knowing about:
 
 - **Page-boundary repeats.** Several dumps repeat the last product of page N as the first of page N+1. Repeats are dropped so `popularity_rank` stays contiguous, but it means the scrape genuinely *missed* one product per overlap. Ranks are therefore approximate to within a few positions — fine for ordering, not exact.
 - **Fold collisions.** The catalogue has a handful of same-named products under one category (e.g. two `Golisopod Stage 1 Blister` rows). These resolve to the lowest `idProduct` and are counted in the summary as `Ambiguous`. One occurred on the 2026-08-13 run.
 
-The 18 unresolved slugs are printed by name. They are genuinely absent from the 2026-08-10 catalogue export — mostly sets released since (Ascended Heroes, 30th Celebration, WCD 2025, CSVH1C), plus `LocExpansionName-Blitzle-1-Pack-Blister`, which is a Cardmarket templating bug on their side. They stay in the JSON with a null id and get dropped by step 2. To curate them, re-export `cardmarket_catalogue.json` and re-run.
+The 12 remaining unresolved slugs are printed by name and are genuinely absent from the 2026-08-10 catalogue export. Cross-checked against all 1,304 tracked `raw_names` on 2026-08-13, only two of them are products we actually collect prices for:
+
+| Unresolved product | Tracked as | Site |
+|---|---|---|
+| `CBB1C: Gem Pack Vol. 1` Booster + Booster Box | "PokémonGem Pack Vol 1 Booster Box (Simplified Chinese)" (2 readings) | MaxGaming |
+| `WCD 2025: Riley McKay "Flutter Devo Gardevoir"` | "Pokémon TCG World Championships Deck 2025 – Riley McKay" (2 readings) | Pelimies |
+
+The other ten have no tracked raw_name, so they cost nothing by staying uncurated. These two will `null_map` in step 4 despite being real sealed products. Two readings each is negligible, so it is reasonable to proceed and pick them up at the next quarterly re-scrape; re-exporting `cardmarket_catalogue.json` and re-running steps 1a–2 would fix them now if wanted.
 
 ### Step 2 — apply to the DB *(automated, seconds)*
 

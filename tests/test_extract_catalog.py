@@ -108,6 +108,10 @@ CATALOGUE = [
     # Same name twice under one category — a real quirk of the export.
     {"idProduct": 585743, "name": "Golisopod Stage 1 Blister", "idCategory": 1083},
     {"idProduct": 585733, "name": "Golisopod Stage 1 Blister", "idCategory": 1083},
+    # Products whose slug omits or mangles part of the real name.
+    {"idProduct": 362931, "name": "Generic Poké Ball Tin", "idCategory": 1014},
+    {"idProduct": 585663, "name": "Fusion Strike: Blitzle 1-Pack Blister", "idCategory": 1083},
+    {"idProduct": 900001, "name": "Booster", "idCategory": 52},
 ]
 
 def test_build_index_keys_products_by_category_and_folded_name(mod):
@@ -189,6 +193,55 @@ def test_resolve_category_keeps_unmatched_products_with_a_null_id(mod):
         "popularity_rank": 1,
     }]
     assert stats.unresolved == 1
+
+
+# The listing label is expansion name + product name, so when a slug is unusable the
+# real catalogue name is recoverable as a trailing run of the label's words.
+
+def test_resolve_category_falls_back_to_the_label_when_the_slug_omits_a_word(mod):
+    # Slug drops "Generic", so only the label can resolve it.
+    entries = [mod.Entry(slug="Poke-Ball-Tin", label="Pokémon Products Generic Poké Ball Tin")]
+    tins = mod.Category(name="Tins", id_category=1014)
+    records, stats = mod.resolve_category(entries, mod.build_index(CATALOGUE), tins)
+    assert records[0]["cardmarket_product_id"] == 362931
+    assert records[0]["name"] == "Generic Poké Ball Tin"
+    assert stats.rescued == 1
+    assert stats.matched == 1
+    assert stats.unresolved == 0
+
+
+def test_resolve_category_falls_back_to_the_label_when_the_slug_is_a_templating_bug(mod):
+    entries = [mod.Entry(
+        slug="LocExpansionName-Blitzle-1-Pack-Blister",
+        label="Fusion Strike Fusion Strike: Blitzle 1-Pack Blister",
+    )]
+    blisters = mod.Category(name="Blisters", id_category=1083)
+    records, stats = mod.resolve_category(entries, mod.build_index(CATALOGUE), blisters)
+    assert records[0]["cardmarket_product_id"] == 585663
+    assert stats.rescued == 1
+
+
+def test_resolve_category_prefers_the_slug_over_the_label(mod):
+    # A correct slug must win even if the label would also resolve to something.
+    entries = [mod.Entry(slug="Base-Set-Booster", label="Champion's Path Booster")]
+    records, stats = mod.resolve_category(entries, mod.build_index(CATALOGUE), _boosters(mod))
+    assert records[0]["cardmarket_product_id"] == 271823
+    assert stats.rescued == 0
+
+
+def test_resolve_category_label_fallback_ignores_one_word_suffixes(mod):
+    # "Booster" alone is a real catalogue row; matching it off a trailing word would
+    # attach an unrelated id to anything ending in "Booster".
+    entries = [mod.Entry(slug="Totally-New-Set-Booster", label="Totally New Set Booster")]
+    records, stats = mod.resolve_category(entries, mod.build_index(CATALOGUE), _boosters(mod))
+    assert records[0]["cardmarket_product_id"] is None
+    assert stats.unresolved == 1
+
+
+def test_resolve_category_label_fallback_takes_the_longest_matching_suffix(mod):
+    entries = [mod.Entry(slug="No-Such-Slug", label="Extra Words Base Set Booster")]
+    records, _ = mod.resolve_category(entries, mod.build_index(CATALOGUE), _boosters(mod))
+    assert records[0]["cardmarket_product_id"] == 271823
 
 
 def test_resolve_category_breaks_ambiguous_matches_on_the_lowest_product_id(mod):
