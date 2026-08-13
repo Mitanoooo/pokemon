@@ -11,7 +11,7 @@ Execute the full accuracy overhaul pipeline end-to-end:
 5. Once all batches are done, run `apply_batch.py --finalize`
 6. Report final `name_mappings` counts (mapped / null_mapped / undecided) and `price_readings` backfill count
 
-**Status: OPEN — steps 1–2 done 2026-08-13, steps 3–6 remain.** All four blockers (08, 09, 10, 11) are closed. Nothing left to build; this ticket is execution only.
+**Status: OPEN — steps 1–3 done 2026-08-13, steps 4–6 remain.** All four blockers (08, 09, 10, 11) are closed. Mostly execution, but step 3 forced two prompt amendments (see Progress).
 
 Blocked by: 08, 09, 10, 11 — all closed
 
@@ -22,7 +22,16 @@ Blocked by: 08, 09, 10, 11 — all closed
   - Result: **1,960 products, 1,948 with ids, 12 null.** Passes the step-1 sanity check.
 - **Step 2 done (2026-08-13).** `matched: 1948`, `not_found: 0`. Verified on Hetzner: 1,948 rows at `is_curated=1`, ranks 1–300, popularity order intact (Boosters rank 1 = "Destined Rivals Booster").
   - `not_found: 0` means the base catalogue did **not** need re-importing — every resolvable product was already in the 5,006-row import.
-- **Steps 3–6 remain.** All are operator-interactive or destructive; see the runbook.
+- **Step 3 done (2026-08-13), with three deviations.** `copilot_prompts/calibration_examples.md` now exists: 25 worked examples, **12 `mapped` / 8 `null_mapped` / 5 `undecided`**. Every product id in it was verified to resolve to a real `is_curated = 1` row.
+  - **The prompt's selection rule was unusable, so examples were picked by difficulty instead.** Reading counts are almost flat — of 1,304 distinct raw_names, 1 has 8 readings, 2 have 6, 28 have 4, 1,172 have exactly 2, and 99 have 1. The prompt's "top 200 by frequency" therefore returns ~33 genuinely frequent names plus 167 arbitrary tie-ordered ones, and SQLite's tie order handed back an alphabetical MaxGaming-dominated run. 54 of those names are also exact string matches that teach nothing. The 25 were instead chosen so that a naive top-1 match is wrong or genuine ambiguity exists.
+  - **The prompt's "Swedish-language sites" stratum barely exists.** Only one tracked site is `.se` and its listings are in English; Finnish is the second language that actually appears. The bank is weighted to Finnish accordingly.
+  - **The output format gained a `Status:` field per example.** The calibration produced a three-way `mapped` / `null_mapped` / `undecided` decision, which the format in `llm_calibrate.md` has no field for. Observed price and listing sites are recorded per example too, since price turned out to be the decisive pack-vs-box signal.
+- **Step 3 produced six binding operator rules**, all worked through in the examples file and mirrored into `llm_batch_normalise.md` § 5b2: random-assortment listings → `null_mapped`; unnamed featured Pokémon → `undecided` + lowest-rank best guess; multi-unit cases → the single-unit row; plain edition preferred over Pokémon Center; bare "Booster" → the single-pack row; box-break / Rip & Ship services → `null_mapped`.
+- **`llm_batch_normalise.md` amended for step 4 (2026-08-13).** Step 1 now fetches each raw_name's observed price range and sites alongside the name, and a new § 5f uses price to separate product forms — single packs read 4–12 EUR against 150–400 EUR for display boxes, and 26% of tracked raw_names are a bare "Booster"/"Boosteri" with no qualifier. Batch CSVs gain a trailing review-only `observed_price` column; `apply_batch.py` needs no change because `csv.DictReader` pulls named fields (now covered by `tests/test_apply_batch.py`). § 5a also gained the literal `category` strings, since "Booster Boxes" is `Pokémon Display` in the data and "Theme Decks" is singular.
+  - Price is a **prior, not a rule** — scalped sets break the bands upward. A single Prismatic Evolutions pack lists at 20.95 EUR and a plain Phantasmal Flames ETB at 149.00 EUR, which on price alone would read as a box and a Pokémon Center edition respectively. Both are recorded in the bank as counter-examples.
+- **Two data quirks step 4 will hit.** The step-1 query returns **1,315 rows for 1,304 distinct raw_names** (11 names are listed in both EUR and SEK and the `GROUP BY` includes currency — treat them as one name, prefer the EUR row), and one raw_name is the **empty string** (2 readings, Fantasialinna).
+- **`scripts/calibration_candidates.py` (new) ships with the pipeline.** It implements the prompt's fixed scoring rule (`difflib` ratio, `popularity_rank` ASC tiebreaker) plus a token-overlap hint list, because the whole-string ratio genuinely excludes the correct product for some names — see the step-3 note below.
+- **Steps 4–6 remain.** All are operator-interactive or destructive; see the runbook.
 
 **Current production mapping state (2026-08-13), for the step-5 diff:** 1,280 mapped / 302 null_mapped / 235 undecided (1,817 rows; 1,911 `price_readings` linked; 1,304 distinct raw_names). This is *not* the ticket-05 state its step-5 text quotes — a later LLM pass has run since.
 
@@ -78,11 +87,31 @@ Verify `matched` is in the low thousands and `not_found` is small. `not_found` =
 
 Note this command wipes existing curation first, so the curated set always reflects the newest scrape only.
 
-### Step 3 — calibration *(interactive, 25 answers, ~45–90 min)*
+### Step 3 — calibration *(interactive, 25 answers, ~45–90 min)* — **DONE 2026-08-13**
 
-Paste `copilot_prompts/llm_calibrate.md` into a Claude Code session. It picks 25 high-frequency raw_names stratified across large chains / small hobby shops / Swedish-language sites, then loops: shows 5 candidates, waits for `chosen_id`, `why_match`, and a `why_not` phrase per rejected candidate.
+Paste `copilot_prompts/llm_calibrate.md` into a Claude Code session. It loops: shows 5 candidates, waits for `chosen_id`, `why_match`, and a `why_not` phrase per rejected candidate. Output: `copilot_prompts/calibration_examples.md`.
 
-This is the quality-determining step — the reasoning text becomes the few-shot bank that steers all ~1,300 mappings. Spend real effort on the `why_not` phrases; they teach the distinctions that matter (booster pack vs. booster box, set-name collisions, language variants). Output: `copilot_prompts/calibration_examples.md`.
+This is the quality-determining step — the reasoning text becomes the few-shot bank that steers all ~1,300 mappings. Spend real effort on the `why_not` phrases; they teach the distinctions that matter (booster pack vs. booster box, set-name collisions, language variants).
+
+**Ignore the prompt's selection rule if this is ever re-run.** "25 high-frequency raw_names stratified across large chains / small hobby shops / Swedish-language sites" does not survive contact with the data: reading counts are flat (1,172 of 1,304 names have exactly 2), so `ORDER BY COUNT(*) DESC LIMIT 200` is mostly tie-order noise, and there is effectively no Swedish-language stratum. Select for **difficulty** instead — names where the naive top-1 match is wrong. Exact string matches make useless examples; 54 of the 1,304 names are exact matches and none of them belong in the bank.
+
+Generate the candidate lists with:
+
+```bash
+# dump the curated catalog once
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 "/opt/pokemon/venv/bin/python -c \"
+import sqlite3, json
+c = sqlite3.connect('/opt/pokemon/pokemon.db')
+for r in c.execute('SELECT id, name, category_name, popularity_rank FROM cardmarket_products WHERE is_curated = 1'):
+    print(json.dumps({'id': r[0], 'name': r[1], 'category': r[2], 'rank': r[3]}, ensure_ascii=False))
+\"" > /tmp/curated.jsonl
+
+python scripts/calibration_candidates.py /tmp/curated.jsonl --file names.tsv
+```
+
+**The top 5 does not always contain the right answer, so let the operator name any id.** The scoring rule the prompt fixes is a whole-string `difflib` ratio, and a long retailer prefix outweighs the set name — for `Scarlet &amp; Violet: Paradox Rift booster` all five candidates are Scarlet & Violet base-set rows and `Paradox Rift Booster` is absent. `calibration_candidates.py` prints a second token-overlap list below the top 5 to recover those cases; five of the 25 examples needed it.
+
+Fetch each candidate name's observed price too — it is the decisive pack-vs-box signal and is now part of the recorded examples.
 
 ### Step 4 — batch normalisation *(interactive, ~13 batches, longest step)*
 
@@ -91,6 +120,8 @@ Paste `copilot_prompts/llm_batch_normalise.md` into a Claude Code session. Per b
 1. Open the CSV; edit only the wrong rows (correct rows need no action)
 2. `python scripts/apply_batch.py batch_NNN.csv`
 3. Reply `next`
+
+Quickest review pass: sort on the trailing `observed_price` column and look for a "Booster" mapped at 200+ EUR or a "Booster Box" mapped under 20 EUR. That column is review-only — `apply_batch.py` ignores it.
 
 Also available at the pause: `skip` re-runs the same 100 names, `stop` ends the session. Safe to stop and resume across days — step 2 of the prompt diffs remote raw_names against `draft_mappings.json`, so a fresh session picks up exactly where the last one left off. With ~1,296 distinct raw_names, expect ~13 batches.
 
