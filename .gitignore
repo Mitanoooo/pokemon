@@ -15,3 +15,6 @@ skipped_no_match.txt
 
 # apply_batch.py local accumulation file
 draft_mappings.json
+
+# derived by extract_catalog.py from the catalog_*.txt dumps + cardmarket_catalogue.json
+catalog_scrape.json
