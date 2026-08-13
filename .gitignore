@@ -12,3 +12,6 @@ new_names.json
 mappings.json
 skipped_merch.txt
 skipped_no_match.txt
+
+# apply_batch.py local accumulation file
+draft_mappings.json
