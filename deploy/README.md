@@ -6,11 +6,54 @@
 **App port:** 8502 (Streamlit)
 **Repo:** `https://github.com/Mitanoooo/pokemon.git`
 
+## GitHub authentication (git push from this machine)
+
+The repo remote uses HTTPS. A credential helper reads `$GITHUB_TOKEN` so `git push` works without a password prompt.
+
+**One-time setup (already done on the EC2 dev machine):**
+
+```bash
+# 1. Create the credential helper
+cat > ~/.git-credential-github << 'EOF'
+#!/bin/bash
+echo "username=Mitanoooo"
+echo "password=$GITHUB_TOKEN"
+EOF
+chmod +x ~/.git-credential-github
+
+# 2. Tell git to use it for github.com
+git config --global credential.https://github.com.helper ~/.git-credential-github
+
+# 3. Add your PAT to ~/.bashrc (replace the placeholder with the real token)
+echo 'export GITHUB_TOKEN=your_pat_here' >> ~/.bashrc
+```
+
+Then open a new shell (or `source ~/.bashrc`) and `git push` will work.
+
+**If you need to rotate the token:** edit `~/.bashrc`, update `GITHUB_TOKEN`, and `source ~/.bashrc`.
+
+**Required PAT scopes:** `repo` (full control of private repositories).
+
+---
+
 > **SSH is blocked by corporate firewall.** There is no SSH access from the office network. Deploys from that network go through the pokemon-scoped HTTP deploy hook below — SSH was only ever needed once, from a machine outside the office network, to do the initial bootstrap (already done). Sessions/automation that already have `~/.ssh/pokemon-hetzner` installed (outside the office network) can instead deploy via direct SSH — see "Deploying via direct SSH" below, which is the method actually used day-to-day so far.
 
 > **Shared server.** The drafter app already runs on this server (port 8501, Caddy on port 80). The pokemon app runs on port 8502 and is reachable at `http://65.21.178.63/pokemon/` via a `handle /pokemon/*` block added to the existing Caddyfile, protected by Caddy `basicauth` (username `pokemon`, password given to the project owner out of band — never store it in this repo) — drafter's root route (`reverse_proxy localhost:8501`) is untouched.
 
 **Status: deployed and live** as of 2026-08-10. Schema updated 2026-08-11 to `cardmarket_products` + `name_mappings`. LLM mapping pass complete: 292 mapped, 279 null_mapped, 728 undecided (resolved via Mapping Review UI). Outstanding: Gmail credentials (`scripts/setup_email.py`) still need to be run interactively with real credentials.
+
+**Schema v3 migration (run once on Hetzner after deploying this version):**
+
+```bash
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 '
+  cd /opt/pokemon
+  sudo -u pokemon git pull --ff-only
+  venv/bin/python init_db.py /opt/pokemon/pokemon.db
+  systemctl restart pokemon-streamlit
+'
+```
+
+`init_db.py` is idempotent: `CREATE TABLE IF NOT EXISTS` handles the three new tables (`scrape_runs`, `listings`, `updates`) and `_add_column_if_missing` adds `price_readings.run_id` only if absent.
 
 > **Gotcha — don't rename `app/views/` back to `app/pages/`.** Streamlit auto-detects any folder literally named `pages/` sibling to the entrypoint as its own multi-page-app router, which registers each page as a standalone top-level route bypassing `main.py`'s custom router (the thing that sets up `st.session_state["conn"]`). Doing so silently breaks every page with a "No database connection." error. The folder is intentionally named `app/views/` for this reason.
 

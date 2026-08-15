@@ -10,6 +10,8 @@ def init_db(db_path: str) -> None:
     conn.executescript(schema)
     # idempotent column additions for pre-v2 databases
     _add_column_if_missing(conn, "sites", "null_price_count", "INTEGER NOT NULL DEFAULT 0")
+    # idempotent column additions for pre-v3 databases
+    _add_column_if_missing(conn, "price_readings", "run_id", "INTEGER REFERENCES scrape_runs(id)")
     conn.close()
     print(f"Database initialised: {db_path}")
 

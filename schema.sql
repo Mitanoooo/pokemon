@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS name_mappings (
     mapped_at             TEXT
 );
 
+CREATE TABLE IF NOT EXISTS scrape_runs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    finished_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS price_readings (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     product_id INTEGER REFERENCES cardmarket_products(id),
@@ -45,7 +51,8 @@ CREATE TABLE IF NOT EXISTS price_readings (
     price      REAL NOT NULL,
     currency   TEXT NOT NULL DEFAULT 'EUR',
     in_stock   INTEGER,
-    scraped_at TEXT NOT NULL DEFAULT (datetime('now'))
+    scraped_at TEXT NOT NULL DEFAULT (datetime('now')),
+    run_id     INTEGER REFERENCES scrape_runs(id)
 );
 
 CREATE TABLE IF NOT EXISTS thresholds (
@@ -54,4 +61,31 @@ CREATE TABLE IF NOT EXISTS thresholds (
     price      REAL NOT NULL,
     active     INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS listings (
+    site_id         INTEGER NOT NULL REFERENCES sites(id),
+    raw_name        TEXT NOT NULL,
+    product_id      INTEGER REFERENCES cardmarket_products(id),
+    product_url     TEXT,
+    first_seen_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    last_seen_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    last_run_id     INTEGER REFERENCES scrape_runs(id),
+    latest_price    REAL,
+    latest_currency TEXT,
+    latest_in_stock INTEGER,
+    PRIMARY KEY (site_id, raw_name)
+);
+
+CREATE TABLE IF NOT EXISTS updates (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id     INTEGER REFERENCES scrape_runs(id),
+    site_id    INTEGER NOT NULL REFERENCES sites(id),
+    raw_name   TEXT NOT NULL,
+    product_id INTEGER REFERENCES cardmarket_products(id),
+    event_type TEXT NOT NULL CHECK (event_type IN ('price_change', 'new_listing', 'back_in_stock')),
+    old_value  TEXT,
+    new_value  TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    seen       INTEGER NOT NULL DEFAULT 0
 );
