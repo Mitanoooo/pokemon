@@ -4,7 +4,7 @@ import logging
 import random
 import time
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import sqlite3
 
@@ -32,10 +32,33 @@ def _upsert_site(conn: sqlite3.Connection, config: dict) -> int:
     return cur.lastrowid
 
 
-def run_site(config: dict, conn: sqlite3.Connection) -> None:
+def _absolute_url(source_url: str, product_url: Optional[str]) -> Optional[str]:
+    """Resolve a scraped href against the site's source_url.
+
+    Returns None for a missing href — urljoin would otherwise hand back the
+    source_url itself, which would look like a real item link in the UI.
+    """
+    if not product_url:
+        return None
+    return urljoin(source_url, product_url)
+
+
+def run_site(
+    config: dict, conn: sqlite3.Connection, run_id: Optional[int] = None
+) -> None:
+    """Scrape one site and persist its listings and price readings.
+
+    run_id is normally supplied by run_all_sites() so every site in one batch
+    shares a run. When called standalone it opens (and closes) its own run.
+    """
     site_name = config.get("site_name", config["source_url"])
     site_id = _upsert_site(conn, config)
     currency = _currency_for(config["source_url"])
+    source_url = config["source_url"]
+
+    owns_run = run_id is None
+    if owns_run:
+        run_id = db.start_run(conn)
 
     null_price_count = 0
     try:
@@ -58,8 +81,21 @@ def run_site(config: dict, conn: sqlite3.Connection) -> None:
                 logger.info("%s: empty page at %s, stopping pagination", site_name, url)
                 break
 
+            # Every sighting lands in listings — including price-less ones, so
+            # they do not look brand new next run. This must stay ahead of the
+            # valid-price filter below.
             for p in products:
                 p["currency"] = currency
+                db.upsert_listing(
+                    conn,
+                    site_id,
+                    p["raw_name"],
+                    product_url=_absolute_url(source_url, p.get("product_url")),
+                    price=p.get("price"),
+                    currency=currency,
+                    in_stock=p.get("in_stock"),
+                    run_id=run_id,
+                )
 
             valid = [p for p in products if p.get("price") is not None]
             skipped = len(products) - len(valid)
@@ -78,7 +114,7 @@ def run_site(config: dict, conn: sqlite3.Connection) -> None:
                                   null_price_count=null_price_count)
             return
 
-        db.write_readings(conn, site_id, all_readings)
+        db.write_readings(conn, site_id, all_readings, run_id=run_id)
         db.update_site_health(conn, site_id, success=True, null_price_count=null_price_count)
         logger.info("%s: pages=%d products=%d", site_name, pages_fetched, len(all_readings))
 
@@ -87,6 +123,9 @@ def run_site(config: dict, conn: sqlite3.Connection) -> None:
         logger.error("%s: error — %s", site_name, error_text)
         db.update_site_health(conn, site_id, success=False, error_text=error_text,
                               null_price_count=null_price_count)
+    finally:
+        if owns_run:
+            db.finish_run(conn, run_id)
 
 
 def run_all_sites(
@@ -100,15 +139,22 @@ def run_all_sites(
     if not config_files:
         logger.warning("No site config files found in %s", configs_dir)
 
-    for path in config_files:
-        try:
-            config = json.loads(open(path).read())
-        except Exception as exc:
-            logger.error("Failed to load config %s: %s", path, exc)
-            continue
+    # A "run" is the whole batch invocation, so every site shares one run_id.
+    run_id = db.start_run(conn)
+    logger.info("Starting scrape run %d", run_id)
 
-        if config.get("disabled"):
-            logger.debug("Skipping disabled site: %s", config.get("site_name", path))
-            continue
+    try:
+        for path in config_files:
+            try:
+                config = json.loads(open(path).read())
+            except Exception as exc:
+                logger.error("Failed to load config %s: %s", path, exc)
+                continue
 
-        run_site(config, conn)
+            if config.get("disabled"):
+                logger.debug("Skipping disabled site: %s", config.get("site_name", path))
+                continue
+
+            run_site(config, conn, run_id=run_id)
+    finally:
+        db.finish_run(conn, run_id)

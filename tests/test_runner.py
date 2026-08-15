@@ -1,4 +1,5 @@
 """Tests for scraper.runner.run_site and run_all_sites."""
+import json
 import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
@@ -174,7 +175,6 @@ def test_run_all_sites_skips_disabled(tmp_path):
     configs_dir = tmp_path / "site_configs"
     configs_dir.mkdir()
 
-    import json
     (configs_dir / "enabled.fi.json").write_text(json.dumps(_cfg("https://enabled.fi/")))
     (configs_dir / "disabled.fi.json").write_text(json.dumps({**_cfg("https://disabled.fi/"), "disabled": True}))
 
@@ -260,7 +260,6 @@ def test_run_all_sites_exception_does_not_abort_others(tmp_path):
     configs_dir = tmp_path / "site_configs"
     configs_dir.mkdir()
 
-    import json
     cfg_a = {**_cfg("https://site-a.fi/"), "site_name": "Site A"}
     cfg_b = {**_cfg("https://site-b.fi/"), "site_name": "Site B"}
     (configs_dir / "a.fi.json").write_text(json.dumps(cfg_a))
@@ -285,3 +284,240 @@ def test_run_all_sites_exception_does_not_abort_others(tmp_path):
         "SELECT COUNT(*) FROM price_readings pr JOIN sites s ON s.id=pr.site_id WHERE s.name='Site B'"
     ).fetchone()[0]
     assert rows == 1
+
+
+# ── run tracking ──────────────────────────────────────────────────────────────
+
+def test_run_site_creates_scrape_run_row(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    row = conn.execute("SELECT * FROM scrape_runs").fetchone()
+    assert row is not None
+    assert row["started_at"] is not None
+    assert row["finished_at"] is not None
+
+
+def test_run_site_price_readings_carry_run_id(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(2)):
+        run_site(cfg, conn)
+
+    run_id = conn.execute("SELECT id FROM scrape_runs").fetchone()["id"]
+    run_ids = [r["run_id"] for r in conn.execute("SELECT run_id FROM price_readings").fetchall()]
+    assert run_ids == [run_id, run_id]
+
+
+def test_run_site_uses_supplied_run_id_without_creating_a_run(conn):
+    cfg = _cfg()
+    run_id = db.start_run(conn)
+
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn, run_id=run_id)
+
+    assert conn.execute("SELECT COUNT(*) FROM scrape_runs").fetchone()[0] == 1
+    assert conn.execute("SELECT run_id FROM price_readings").fetchone()["run_id"] == run_id
+
+
+def test_run_all_sites_creates_one_finished_run_shared_by_all_sites(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    conn = db.get_connection(db_path)
+    conn.executescript(SCHEMA)
+    conn.close()
+
+    configs_dir = tmp_path / "site_configs"
+    configs_dir.mkdir()
+
+    (configs_dir / "a.fi.json").write_text(
+        json.dumps({**_cfg("https://site-a.fi/"), "site_name": "Site A"}))
+    (configs_dir / "b.fi.json").write_text(
+        json.dumps({**_cfg("https://site-b.fi/"), "site_name": "Site B"}))
+
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)), \
+         patch("scraper.runner.time.sleep"):
+        run_all_sites(db_path, configs_dir=str(configs_dir))
+
+    conn = db.get_connection(db_path)
+    runs = conn.execute("SELECT * FROM scrape_runs").fetchall()
+    assert len(runs) == 1
+    assert runs[0]["started_at"] is not None
+    assert runs[0]["finished_at"] is not None
+
+    run_ids = {r["run_id"] for r in conn.execute("SELECT run_id FROM price_readings").fetchall()}
+    assert run_ids == {runs[0]["id"]}
+
+
+# ── listings persistence ──────────────────────────────────────────────────────
+
+def test_run_site_upserts_listing_for_every_product(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(3)):
+        run_site(cfg, conn)
+
+    names = [r["raw_name"] for r in conn.execute(
+        "SELECT raw_name FROM listings ORDER BY raw_name").fetchall()]
+    assert names == ["Product 0", "Product 1", "Product 2"]
+
+
+def test_run_site_upserts_listing_for_price_less_product(conn):
+    cfg = _cfg()
+    products = [
+        {"raw_name": "Sealed Box", "price": 49.90, "currency": "EUR", "in_stock": True,
+         "product_url": "https://example.fi/p/box"},
+        {"raw_name": "Single Card", "price": None, "currency": "EUR", "in_stock": True,
+         "product_url": "https://example.fi/p/card"},
+    ]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products):
+        run_site(cfg, conn)
+
+    listing = conn.execute(
+        "SELECT * FROM listings WHERE raw_name = 'Single Card'").fetchone()
+    assert listing is not None
+    assert listing["latest_price"] is None
+    assert listing["product_url"] == "https://example.fi/p/card"
+
+    # …but it stays out of price_readings
+    reading_names = [r["raw_name"] for r in conn.execute(
+        "SELECT raw_name FROM price_readings").fetchall()]
+    assert reading_names == ["Sealed Box"]
+
+
+def test_run_site_listings_carry_last_run_id(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    run_id = conn.execute("SELECT id FROM scrape_runs").fetchone()["id"]
+    assert conn.execute("SELECT last_run_id FROM listings").fetchone()["last_run_id"] == run_id
+
+
+def test_run_site_second_run_keeps_first_seen_and_moves_last_seen(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    conn.execute("UPDATE listings SET first_seen_at='2020-01-01 00:00:00', last_seen_at='2020-01-01 00:00:00'")
+    conn.commit()
+
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    rows = conn.execute("SELECT * FROM listings").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["first_seen_at"] == "2020-01-01 00:00:00"
+    assert rows[0]["last_seen_at"] > "2020-01-01 00:00:00"
+
+
+def test_run_site_resolves_relative_product_url_against_source_url(conn):
+    cfg = _cfg(source_url="https://example.fi/shop/")
+    products = [
+        {"raw_name": "Relative Box", "price": 10.0, "currency": "EUR", "in_stock": True,
+         "product_url": "/products/relative-box"},
+        {"raw_name": "Sibling Box", "price": 11.0, "currency": "EUR", "in_stock": True,
+         "product_url": "sibling-box"},
+    ]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products):
+        run_site(cfg, conn)
+
+    urls = {r["raw_name"]: r["product_url"] for r in conn.execute(
+        "SELECT raw_name, product_url FROM listings").fetchall()}
+    assert urls["Relative Box"] == "https://example.fi/products/relative-box"
+    assert urls["Sibling Box"] == "https://example.fi/shop/sibling-box"
+
+
+def test_run_site_leaves_absolute_product_url_untouched(conn):
+    cfg = _cfg(source_url="https://example.fi/shop/")
+    products = [
+        {"raw_name": "Absolute Box", "price": 10.0, "currency": "EUR", "in_stock": True,
+         "product_url": "https://cdn.example.com/p/abs"},
+    ]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products):
+        run_site(cfg, conn)
+
+    row = conn.execute("SELECT product_url FROM listings").fetchone()
+    assert row["product_url"] == "https://cdn.example.com/p/abs"
+
+
+def test_run_site_missing_product_url_stored_as_null_not_source_url(conn):
+    cfg = _cfg(source_url="https://example.fi/shop/")
+    products = [
+        {"raw_name": "No Link Box", "price": 10.0, "currency": "EUR", "in_stock": True,
+         "product_url": ""},
+    ]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products):
+        run_site(cfg, conn)
+
+    row = conn.execute("SELECT product_url FROM listings").fetchone()
+    assert row["product_url"] is None
+
+
+def test_run_site_all_none_prices_still_upserts_listings(conn):
+    cfg = _cfg()
+    all_none = [
+        {"raw_name": "Single A", "price": None, "currency": "EUR", "in_stock": True, "product_url": ""},
+        {"raw_name": "Single B", "price": None, "currency": "EUR", "in_stock": True, "product_url": ""},
+    ]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=all_none):
+        run_site(cfg, conn)
+
+    # site is marked unhealthy, but the sightings are still recorded so they do
+    # not look brand new on the next run
+    assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 2
+    assert conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0] == 0
+
+
+def test_run_site_listing_product_id_resolved_from_name_mappings(conn):
+    cfg = _cfg()
+    conn.execute(
+        """
+        INSERT INTO cardmarket_products (id, name, id_category, category_name, id_expansion)
+        VALUES (500, 'Prismatic Evolutions ETB', 1, 'Elite Trainer Boxes', 1)
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO name_mappings (raw_name, cardmarket_product_id, status)
+        VALUES ('Product 0', 500, 'mapped')
+        """
+    )
+    conn.commit()
+
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    row = conn.execute("SELECT product_id FROM listings").fetchone()
+    assert row["product_id"] == 500
+
+
+# ── listings: real fixture + real site config ─────────────────────────────────
+
+def test_run_site_resolves_real_relative_hrefs_to_absolute(conn):
+    """Every configured site but tcgkauppa.fi emits root-relative hrefs, so the
+    urljoin step is load-bearing in production — pin it against real HTML."""
+    root = Path(__file__).parent.parent
+    cfg = json.loads((root / "site_configs" / "spelparken.se.json").read_text())
+    html = (root / "tests" / "fixtures" / "spelparken.se" / "page1.html").read_text()
+
+    with patch("scraper.runner.fetch", return_value=html), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    rows = conn.execute("SELECT raw_name, product_url FROM listings").fetchall()
+    assert rows, "fixture produced no listings"
+    for r in rows:
+        assert r["product_url"].startswith("https://spelparken.se/products/"), r["raw_name"]

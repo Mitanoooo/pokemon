@@ -14,35 +14,138 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def _resolve_product_id(conn: sqlite3.Connection, raw_name: str) -> Optional[int]:
+    """Look up the mapped cardmarket product for a raw_name, or None."""
+    row = conn.execute(
+        """
+        SELECT cardmarket_product_id FROM name_mappings
+        WHERE raw_name = ? AND status = 'mapped'
+        """,
+        (raw_name,),
+    ).fetchone()
+    return row[0] if row else None
+
+
+# ── scrape runs ───────────────────────────────────────────────────────────────
+
+def start_run(conn: sqlite3.Connection) -> int:
+    """Open a scrape run and return its id. One run per run_all_sites() call."""
+    cur = conn.execute("INSERT INTO scrape_runs (started_at) VALUES (?)", (_now(),))
+    conn.commit()
+    return cur.lastrowid
+
+
+def finish_run(conn: sqlite3.Connection, run_id: int) -> None:
+    """Stamp finished_at on a run. A NULL finished_at means the run was interrupted."""
+    conn.execute(
+        "UPDATE scrape_runs SET finished_at = ? WHERE id = ?", (_now(), run_id)
+    )
+    conn.commit()
+
+
+# ── listings ──────────────────────────────────────────────────────────────────
+
+def get_listing_state(conn: sqlite3.Connection, site_id: int) -> dict[str, dict]:
+    """Return the current listings rows for one site, keyed by raw_name.
+
+    Snapshots state *before* a run's upserts so a caller can diff old against
+    new. No production caller yet — the event-diff logic that consumes it is
+    the next piece of work.
+    """
+    rows = conn.execute(
+        """
+        SELECT raw_name, product_id, product_url, first_seen_at, last_seen_at,
+               last_run_id, latest_price, latest_currency, latest_in_stock
+        FROM listings
+        WHERE site_id = ?
+        """,
+        (site_id,),
+    ).fetchall()
+    return {r["raw_name"]: dict(r) for r in rows}
+
+
+def upsert_listing(
+    conn: sqlite3.Connection,
+    site_id: int,
+    raw_name: str,
+    product_url: Optional[str],
+    price: Optional[float],
+    currency: Optional[str],
+    in_stock: Optional[bool],
+    run_id: Optional[int] = None,
+) -> None:
+    """Insert-or-update the listings row for one (site_id, raw_name) sighting.
+
+    Called for *every* scraped product, including ones with no parseable price —
+    that is what keeps a price-less product from looking brand new on the next
+    run.  first_seen_at is set on insert only; last_seen_at and last_run_id move
+    on every sighting.
+
+    A NULL price / currency / product_url does not overwrite a previously known
+    value: latest_price is "the last price we could parse", NULL only when no
+    price has ever been parsed for this pair.
+    """
+    now = _now()
+    product_id = _resolve_product_id(conn, raw_name)
+    url = product_url or None
+    in_stock_int = None if in_stock is None else int(in_stock)
+
+    conn.execute(
+        """
+        INSERT INTO listings
+            (site_id, raw_name, product_id, product_url, first_seen_at,
+             last_seen_at, last_run_id, latest_price, latest_currency,
+             latest_in_stock)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (site_id, raw_name) DO UPDATE SET
+            product_id      = COALESCE(excluded.product_id, listings.product_id),
+            product_url     = COALESCE(excluded.product_url, listings.product_url),
+            last_seen_at    = excluded.last_seen_at,
+            last_run_id     = excluded.last_run_id,
+            latest_price    = COALESCE(excluded.latest_price, listings.latest_price),
+            latest_currency = COALESCE(excluded.latest_currency, listings.latest_currency),
+            latest_in_stock = COALESCE(excluded.latest_in_stock, listings.latest_in_stock)
+        """,
+        (
+            site_id,
+            raw_name,
+            product_id,
+            url,
+            now,
+            now,
+            run_id,
+            price,
+            currency,
+            in_stock_int,
+        ),
+    )
+    conn.commit()
 
 
 # ── price readings ────────────────────────────────────────────────────────────
 
 def write_readings(
-    conn: sqlite3.Connection, site_id: int, readings: list[dict]
+    conn: sqlite3.Connection,
+    site_id: int,
+    readings: list[dict],
+    run_id: Optional[int] = None,
 ) -> None:
     """Write a list of raw product readings for one site.
 
     Each reading dict must have: raw_name, price, currency, in_stock,
-    product_url.  product_id is resolved by looking up product_aliases; NULL
-    when no alias exists yet.
+    product_url.  product_id is resolved by looking up name_mappings; NULL
+    when no mapping exists yet.
     """
     now = _now()
     for r in readings:
-        mapping_row = conn.execute(
-            """
-            SELECT cardmarket_product_id FROM name_mappings
-            WHERE raw_name = ? AND status = 'mapped'
-            """,
-            (r["raw_name"],),
-        ).fetchone()
-        product_id: Optional[int] = mapping_row[0] if mapping_row else None
+        product_id = _resolve_product_id(conn, r["raw_name"])
 
         conn.execute(
             """
             INSERT INTO price_readings
-                (product_id, site_id, raw_name, price, currency, in_stock, scraped_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+                (product_id, site_id, raw_name, price, currency, in_stock,
+                 scraped_at, run_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 product_id,
@@ -52,6 +155,7 @@ def write_readings(
                 r.get("currency", "EUR"),
                 r.get("in_stock"),
                 now,
+                run_id,
             ),
         )
     conn.commit()
@@ -192,7 +296,11 @@ def save_mapping(
     raw_name: str,
     cardmarket_product_id: Optional[int],
 ) -> None:
-    """Resolve an undecided mapping: set status and backfill price_readings."""
+    """Resolve an undecided mapping: set status and backfill product_id.
+
+    The denormalised product_id is kept in sync on both price_readings and
+    listings, across every site that has seen this raw_name.
+    """
     status = "mapped" if cardmarket_product_id is not None else "null_mapped"
     now = _now()
     conn.execute(
@@ -208,6 +316,14 @@ def save_mapping(
     conn.execute(
         """
         UPDATE price_readings
+        SET product_id = ?
+        WHERE raw_name = ?
+        """,
+        (cardmarket_product_id, raw_name),
+    )
+    conn.execute(
+        """
+        UPDATE listings
         SET product_id = ?
         WHERE raw_name = ?
         """,
