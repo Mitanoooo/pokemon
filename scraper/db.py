@@ -164,14 +164,16 @@ def write_readings(
 # ── digest queries ────────────────────────────────────────────────────────────
 
 def get_latest_price_per_site(conn: sqlite3.Connection, product_id: int) -> list[dict]:
-    """Return the most recent price reading per site for a given product."""
+    """Return the most recent price reading per site for a given product,
+    including the direct item URL from listings where available."""
     rows = conn.execute(
         """
         SELECT pr.site_id, s.name AS site_name, s.url AS site_url,
                pr.price, pr.currency, pr.in_stock, pr.scraped_at,
-               pr.raw_name
+               pr.raw_name, l.product_url
         FROM price_readings pr
         JOIN sites s ON s.id = pr.site_id
+        LEFT JOIN listings l ON l.site_id = pr.site_id AND l.raw_name = pr.raw_name
         WHERE pr.product_id = ?
           AND pr.scraped_at = (
               SELECT MAX(pr2.scraped_at)
@@ -349,15 +351,85 @@ def get_unmapped_raw_names(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+# ── updates ───────────────────────────────────────────────────────────────────
+
+def write_updates(conn: sqlite3.Connection, events: list[dict]) -> None:
+    """Bulk-insert update events into the updates table."""
+    for e in events:
+        conn.execute(
+            """
+            INSERT INTO updates
+                (run_id, site_id, raw_name, product_id, event_type, old_value, new_value)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                e.get("run_id"),
+                e["site_id"],
+                e["raw_name"],
+                e.get("product_id"),
+                e["event_type"],
+                e.get("old_value"),
+                e.get("new_value"),
+            ),
+        )
+    conn.commit()
+
+
+def prune_updates(conn: sqlite3.Connection, days: int = 30) -> None:
+    """Delete update rows older than `days` days."""
+    conn.execute(
+        "DELETE FROM updates WHERE created_at < datetime('now', ?)",
+        (f"-{days} days",),
+    )
+    conn.commit()
+
+
+def get_updates(conn: sqlite3.Connection, mapped_only: bool = True) -> list[dict]:
+    """Return update rows newest-first, optionally limited to mapped listings."""
+    query = """
+        SELECT u.id, u.run_id, u.site_id, s.name AS site_name,
+               u.raw_name, u.product_id,
+               COALESCE(cp.name, u.raw_name) AS product_name,
+               u.event_type, u.old_value, u.new_value,
+               u.created_at, u.seen,
+               sr.started_at AS run_started_at
+        FROM updates u
+        LEFT JOIN sites s ON s.id = u.site_id
+        LEFT JOIN cardmarket_products cp ON cp.id = u.product_id
+        LEFT JOIN scrape_runs sr ON sr.id = u.run_id
+    """
+    if mapped_only:
+        query += " WHERE u.product_id IS NOT NULL"
+    query += " ORDER BY u.created_at DESC"
+    rows = conn.execute(query).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_updates_seen(conn: sqlite3.Connection, ids: list[int]) -> None:
+    """Set seen=1 for the given update ids."""
+    if not ids:
+        return
+    placeholders = ",".join("?" * len(ids))
+    conn.execute(f"UPDATE updates SET seen = 1 WHERE id IN ({placeholders})", ids)
+    conn.commit()
+
+
+def mark_all_updates_seen(conn: sqlite3.Connection) -> None:
+    """Set seen=1 for every row in updates."""
+    conn.execute("UPDATE updates SET seen = 1")
+    conn.commit()
+
+
 # ── products page queries ─────────────────────────────────────────────────────
 
 def get_products_summary(conn: sqlite3.Connection) -> list[dict]:
     """Return one row per cardmarket product with lowest current price, cheapest
-    site, number of sites in stock, and category for the Products list view."""
+    site, direct item URL (from listings), in-stock count, and category."""
     rows = conn.execute(
         """
         WITH latest AS (
             SELECT product_id, site_id, price, currency, in_stock, scraped_at,
+                   raw_name,
                    ROW_NUMBER() OVER (
                        PARTITION BY product_id, site_id
                        ORDER BY scraped_at DESC
@@ -366,12 +438,13 @@ def get_products_summary(conn: sqlite3.Connection) -> list[dict]:
             WHERE product_id IS NOT NULL
         ),
         latest_unique AS (
-            SELECT product_id, site_id, price, currency, scraped_at, in_stock
+            SELECT product_id, site_id, price, currency, scraped_at, in_stock,
+                   raw_name
             FROM latest
             WHERE rn = 1
         ),
         cheapest AS (
-            SELECT product_id, site_id, price, currency,
+            SELECT product_id, site_id, price, currency, raw_name,
                    ROW_NUMBER() OVER (
                        PARTITION BY product_id
                        ORDER BY price
@@ -387,6 +460,7 @@ def get_products_summary(conn: sqlite3.Connection) -> list[dict]:
             ch.currency,
             s.name AS cheapest_site,
             s.url  AS cheapest_site_url,
+            l.product_url,
             (SELECT COUNT(DISTINCT site_id)
              FROM latest_unique lu
              WHERE lu.product_id = cp.id
@@ -397,6 +471,7 @@ def get_products_summary(conn: sqlite3.Connection) -> list[dict]:
         FROM cardmarket_products cp
         LEFT JOIN cheapest ch ON ch.product_id = cp.id AND ch.price_rank = 1
         LEFT JOIN sites s ON s.id = ch.site_id
+        LEFT JOIN listings l ON l.site_id = ch.site_id AND l.raw_name = ch.raw_name
         WHERE EXISTS (
             SELECT 1 FROM price_readings pr WHERE pr.product_id = cp.id
         )

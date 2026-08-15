@@ -521,3 +521,137 @@ def test_run_site_resolves_real_relative_hrefs_to_absolute(conn):
     assert rows, "fixture produced no listings"
     for r in rows:
         assert r["product_url"].startswith("https://spelparken.se/products/"), r["raw_name"]
+
+
+# ── update event generation ───────────────────────────────────────────────────
+
+def test_run_site_emits_new_listing_event_for_first_seen_product(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    rows = conn.execute(
+        "SELECT * FROM updates WHERE event_type='new_listing'"
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["raw_name"] == "Product 0"
+
+
+def test_run_site_emits_price_change_event_on_price_delta(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    # Backdate the listing so the timestamps differ; makes second run distinct
+    conn.execute(
+        "UPDATE listings SET first_seen_at='2020-01-01 00:00:00', "
+        "last_seen_at='2020-01-01 00:00:00'"
+    )
+    conn.commit()
+
+    products_v2 = [{"raw_name": "Product 0", "price": 14.99,
+                    "currency": "EUR", "in_stock": True, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_v2):
+        run_site(cfg, conn)
+
+    changes = conn.execute(
+        "SELECT * FROM updates WHERE event_type='price_change'"
+    ).fetchall()
+    assert len(changes) == 1
+    assert changes[0]["old_value"] == "9.99"
+    assert changes[0]["new_value"] == "14.99"
+
+
+def test_run_site_no_event_when_price_unchanged(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    # Only the initial new_listing; second run emits nothing (same price)
+    rows = conn.execute("SELECT event_type FROM updates").fetchall()
+    assert [r["event_type"] for r in rows] == ["new_listing"]
+
+
+def test_run_site_back_in_stock_emitted_with_stock_mode(conn):
+    cfg = _cfg(extra={"stock_mode": "badge_text"})
+    products_out = [{"raw_name": "Box", "price": 9.99,
+                     "currency": "EUR", "in_stock": False, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_out):
+        run_site(cfg, conn)
+
+    products_in = [{"raw_name": "Box", "price": 9.99,
+                    "currency": "EUR", "in_stock": True, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_in):
+        run_site(cfg, conn)
+
+    types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
+    assert "back_in_stock" in types
+
+
+def test_run_site_price_change_threshold_is_1_for_sek(conn):
+    cfg = _cfg(source_url="https://spelparken.se/shop/")
+    cfg["site_name"] = "Spelparken"
+    # First run: 499 SEK
+    products_v1 = [{"raw_name": "Box", "price": 499.0,
+                    "currency": "SEK", "in_stock": True, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_v1):
+        run_site(cfg, conn)
+
+    # Second run: 499.5 SEK — less than 1 SEK delta, no price_change expected
+    products_v2 = [{"raw_name": "Box", "price": 499.5,
+                    "currency": "SEK", "in_stock": True, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_v2):
+        run_site(cfg, conn)
+
+    types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
+    assert "price_change" not in types
+
+
+def test_run_site_price_change_threshold_fires_at_1_for_sek(conn):
+    cfg = _cfg(source_url="https://spelparken.se/shop/")
+    cfg["site_name"] = "Spelparken"
+    products_v1 = [{"raw_name": "Box", "price": 499.0,
+                    "currency": "SEK", "in_stock": True, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_v1):
+        run_site(cfg, conn)
+
+    # Second run: 500 SEK — exactly 1 SEK delta, price_change expected
+    products_v2 = [{"raw_name": "Box", "price": 500.0,
+                    "currency": "SEK", "in_stock": True, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_v2):
+        run_site(cfg, conn)
+
+    types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
+    assert "price_change" in types
+
+
+def test_run_site_back_in_stock_not_emitted_without_stock_mode(conn):
+    cfg = _cfg()  # no stock_mode
+    products_out = [{"raw_name": "Box", "price": 9.99,
+                     "currency": "EUR", "in_stock": False, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_out):
+        run_site(cfg, conn)
+
+    products_in = [{"raw_name": "Box", "price": 9.99,
+                    "currency": "EUR", "in_stock": True, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_in):
+        run_site(cfg, conn)
+
+    types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
+    assert "back_in_stock" not in types

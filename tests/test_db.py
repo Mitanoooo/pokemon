@@ -420,6 +420,164 @@ def test_save_mapping_backfills_listings_across_all_sites(conn, site_id):
     assert ids == [product_id, product_id]
 
 
+# ── write_updates ─────────────────────────────────────────────────────────────
+
+def test_write_updates_stores_correct_fields(conn, site_id):
+    run_id = db.start_run(conn)
+    events = [
+        {"run_id": run_id, "site_id": site_id, "raw_name": "Box",
+         "product_id": None, "event_type": "new_listing",
+         "old_value": None, "new_value": "9.99"},
+    ]
+    db.write_updates(conn, events)
+
+    row = conn.execute("SELECT * FROM updates").fetchone()
+    assert row["run_id"] == run_id
+    assert row["site_id"] == site_id
+    assert row["raw_name"] == "Box"
+    assert row["event_type"] == "new_listing"
+    assert row["new_value"] == "9.99"
+    assert row["old_value"] is None
+    assert row["seen"] == 0
+
+
+# ── prune_updates ─────────────────────────────────────────────────────────────
+
+def test_prune_updates_deletes_old_rows_leaves_recent(conn, site_id):
+    run_id = db.start_run(conn)
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, event_type, created_at) "
+        "VALUES (?, ?, 'Old Box', 'new_listing', '2020-01-01 00:00:00')",
+        (run_id, site_id),
+    )
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, event_type) "
+        "VALUES (?, ?, 'New Box', 'new_listing')",
+        (run_id, site_id),
+    )
+    conn.commit()
+
+    db.prune_updates(conn, days=30)
+
+    names = [r["raw_name"] for r in conn.execute("SELECT raw_name FROM updates").fetchall()]
+    assert names == ["New Box"]
+
+
+# ── get_updates ───────────────────────────────────────────────────────────────
+
+def test_get_updates_mapped_only_excludes_unmapped_rows(conn, site_id):
+    product_id = _add_product(conn, "Test Product")
+    run_id = db.start_run(conn)
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, product_id, event_type) "
+        "VALUES (?, ?, 'Mapped Box', ?, 'new_listing')",
+        (run_id, site_id, product_id),
+    )
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, product_id, event_type) "
+        "VALUES (?, ?, 'Unmapped Box', NULL, 'new_listing')",
+        (run_id, site_id),
+    )
+    conn.commit()
+
+    results = db.get_updates(conn, mapped_only=True)
+    assert len(results) == 1
+    assert results[0]["raw_name"] == "Mapped Box"
+
+
+def test_get_updates_not_mapped_only_returns_all(conn, site_id):
+    product_id = _add_product(conn, "Test Product")
+    run_id = db.start_run(conn)
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, product_id, event_type) "
+        "VALUES (?, ?, 'Mapped Box', ?, 'new_listing')",
+        (run_id, site_id, product_id),
+    )
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, product_id, event_type) "
+        "VALUES (?, ?, 'Unmapped Box', NULL, 'new_listing')",
+        (run_id, site_id),
+    )
+    conn.commit()
+
+    results = db.get_updates(conn, mapped_only=False)
+    assert len(results) == 2
+
+
+# ── mark_updates_seen ─────────────────────────────────────────────────────────
+
+def test_mark_updates_seen_sets_seen_for_given_ids_only(conn, site_id):
+    run_id = db.start_run(conn)
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, event_type) VALUES (?, ?, 'A', 'new_listing')",
+        (run_id, site_id),
+    )
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, event_type) VALUES (?, ?, 'B', 'new_listing')",
+        (run_id, site_id),
+    )
+    conn.commit()
+
+    id_a = conn.execute("SELECT id FROM updates WHERE raw_name='A'").fetchone()["id"]
+    db.mark_updates_seen(conn, [id_a])
+
+    rows = {r["raw_name"]: r["seen"] for r in conn.execute("SELECT raw_name, seen FROM updates").fetchall()}
+    assert rows["A"] == 1
+    assert rows["B"] == 0
+
+
+def test_mark_all_updates_seen_sets_seen_for_all(conn, site_id):
+    run_id = db.start_run(conn)
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, event_type) VALUES (?, ?, 'A', 'new_listing')",
+        (run_id, site_id),
+    )
+    conn.execute(
+        "INSERT INTO updates (run_id, site_id, raw_name, event_type) VALUES (?, ?, 'B', 'new_listing')",
+        (run_id, site_id),
+    )
+    conn.commit()
+
+    db.mark_all_updates_seen(conn)
+
+    rows = conn.execute("SELECT seen FROM updates").fetchall()
+    assert all(r["seen"] == 1 for r in rows)
+
+
+# ── get_products_summary: product_url from listings ───────────────────────────
+
+def test_get_products_summary_returns_product_url_from_listings(conn, site_id):
+    product_id = _add_product(conn, "Prismatic Evolutions ETB")
+    _map_name(conn, "Prismatic ETB raw", product_id)
+
+    run_id = db.start_run(conn)
+    db.upsert_listing(conn, site_id, "Prismatic ETB raw",
+                      "https://example.fi/p/prismatic",
+                      54.90, "EUR", True, run_id)
+    db.write_readings(conn, site_id,
+                      [{"raw_name": "Prismatic ETB raw", "price": 54.90,
+                        "currency": "EUR", "in_stock": True, "product_url": ""}],
+                      run_id=run_id)
+
+    rows = db.get_products_summary(conn)
+    assert len(rows) == 1
+    assert rows[0]["product_url"] == "https://example.fi/p/prismatic"
+
+
+def test_get_products_summary_product_url_is_none_when_no_listing(conn, site_id):
+    product_id = _add_product(conn, "Booster Box")
+    _map_name(conn, "Booster Box raw", product_id)
+    db.write_readings(conn, site_id,
+                      [{"raw_name": "Booster Box raw", "price": 99.90,
+                        "currency": "EUR", "in_stock": True, "product_url": ""}])
+
+    rows = db.get_products_summary(conn)
+    assert len(rows) == 1
+    assert rows[0]["product_url"] is None
+
+
+# ── (existing tests continue below) ──────────────────────────────────────────
+
 def test_save_mapping_null_mapped_leaves_listings_product_id_null(conn, site_id):
     conn.execute(
         "INSERT INTO name_mappings (raw_name, status) VALUES ('Some Sleeve', 'undecided')"

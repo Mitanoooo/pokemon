@@ -43,6 +43,65 @@ def _absolute_url(source_url: str, product_url: Optional[str]) -> Optional[str]:
     return urljoin(source_url, product_url)
 
 
+def _build_update_events(
+    site_id: int,
+    run_id: int,
+    products: list[dict],
+    pre_state: dict,
+    post_state: dict,
+    stock_mode: Optional[str],
+) -> list[dict]:
+    """Diff products seen this run against the pre-upsert state and return events."""
+    # Last occurrence of each raw_name wins (handles multi-page duplicates)
+    deduped: dict[str, dict] = {}
+    for p in products:
+        deduped[p["raw_name"]] = p
+
+    events = []
+    for raw_name, p in deduped.items():
+        new_price = p.get("price")
+        new_in_stock = p.get("in_stock")
+        product_id = post_state.get(raw_name, {}).get("product_id")
+        old = pre_state.get(raw_name)
+
+        base = {
+            "run_id": run_id,
+            "site_id": site_id,
+            "raw_name": raw_name,
+            "product_id": product_id,
+        }
+
+        if old is None:
+            events.append({
+                **base,
+                "event_type": "new_listing",
+                "old_value": None,
+                "new_value": str(new_price) if new_price is not None else None,
+            })
+        else:
+            old_price = old.get("latest_price")
+            price_threshold = 1.0 if p.get("currency") == "SEK" else 0.01
+            if (old_price is not None and new_price is not None
+                    and abs(new_price - old_price) >= price_threshold):
+                events.append({
+                    **base,
+                    "event_type": "price_change",
+                    "old_value": str(old_price),
+                    "new_value": str(new_price),
+                })
+
+            if (stock_mode and stock_mode != "unknown"
+                    and old.get("latest_in_stock") == 0 and new_in_stock):
+                events.append({
+                    **base,
+                    "event_type": "back_in_stock",
+                    "old_value": None,
+                    "new_value": "in_stock",
+                })
+
+    return events
+
+
 def run_site(
     config: dict, conn: sqlite3.Connection, run_id: Optional[int] = None
 ) -> None:
@@ -55,6 +114,7 @@ def run_site(
     site_id = _upsert_site(conn, config)
     currency = _currency_for(config["source_url"])
     source_url = config["source_url"]
+    stock_mode = config.get("stock_mode")
 
     owns_run = run_id is None
     if owns_run:
@@ -62,8 +122,12 @@ def run_site(
 
     null_price_count = 0
     try:
+        # Snapshot state before this run's upserts for event diffing.
+        pre_state = db.get_listing_state(conn, site_id)
+
         urls = paginate(config)
         all_readings: list[dict] = []
+        all_products: list[dict] = []
         pages_fetched = 0
 
         for i, url in enumerate(urls):
@@ -97,6 +161,7 @@ def run_site(
                     run_id=run_id,
                 )
 
+            all_products.extend(products)
             valid = [p for p in products if p.get("price") is not None]
             skipped = len(products) - len(valid)
             if skipped:
@@ -106,6 +171,15 @@ def run_site(
                     site_name, skipped, url,
                 )
             all_readings.extend(valid)
+
+        # Generate and persist update events for all products seen this run.
+        if all_products:
+            post_state = db.get_listing_state(conn, site_id)
+            events = _build_update_events(
+                site_id, run_id, all_products, pre_state, post_state, stock_mode
+            )
+            if events:
+                db.write_updates(conn, events)
 
         if not all_readings:
             msg = "0 products across all pages"
@@ -157,4 +231,5 @@ def run_all_sites(
 
             run_site(config, conn, run_id=run_id)
     finally:
+        db.prune_updates(conn)
         db.finish_run(conn, run_id)

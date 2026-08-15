@@ -28,7 +28,7 @@ def show_detail(product_id: int) -> None:
         st.session_state.pop("selected_product_id", None)
         st.rerun()
 
-    # Current prices per site (reuse existing db helper)
+    # Current prices per site
     current = db.get_latest_price_per_site(conn, product_id)
     st.subheader("Current prices")
     if current:
@@ -41,15 +41,21 @@ def show_detail(product_id: int) -> None:
                 stock = "In stock"
             else:
                 stock = "Out of stock"
-            site_link = f"[{r['site_name']}]({r['site_url']})"
+            link = r.get("product_url") or r["site_url"]
             rows.append({
-                "Site": site_link,
+                "Site": r["site_name"],
                 "Price": price_str,
                 "Stock": stock,
-                "Last updated": r["scraped_at"],
+                "Link": link,
+                "Last updated": str(r["scraped_at"] or "")[:16],
             })
         df = pd.DataFrame(rows)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(
+            df,
+            column_config={"Link": st.column_config.LinkColumn("Link")},
+            use_container_width=True,
+            hide_index=True,
+        )
     else:
         st.info("No price data for this product.")
 
@@ -71,65 +77,105 @@ def show_detail(product_id: int) -> None:
         st.line_chart(pivot)
 
 
+# ── listings panel ───────────────────────────────────────────────────────────
+
+def _show_listings_panel(product_id: int, product_name: str) -> None:
+    st.subheader(f"Listings — {product_name}")
+
+    listings = db.get_latest_price_per_site(conn, product_id)
+    if not listings:
+        st.info("No listings data for this product.")
+    else:
+        rows = []
+        for r in listings:
+            price_str = f"{r['price']:.2f} {r['currency']}" if r["price"] else "—"
+            if r["in_stock"] is None:
+                stock = "Unknown"
+            elif r["in_stock"]:
+                stock = "In stock"
+            else:
+                stock = "Out of stock"
+            link = r.get("product_url") or r.get("site_url") or ""
+            rows.append({
+                "Site": r["site_name"],
+                "Price": price_str,
+                "Stock": stock,
+                "Link": link,
+                "Last seen": str(r["scraped_at"] or "")[:16],
+            })
+        st.dataframe(
+            pd.DataFrame(rows),
+            column_config={"Link": st.column_config.LinkColumn("Link")},
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    if st.button("Open detail page →"):
+        st.session_state["selected_product_id"] = product_id
+        st.rerun()
+
+
 # ── list view ────────────────────────────────────────────────────────────────
 
 def show_list() -> None:
     st.title("Products")
 
     rows = db.get_products_summary(conn)
-
     if not rows:
         st.info("No products yet.")
         return
 
-    df = pd.DataFrame(rows)
+    df = pd.DataFrame(rows).reset_index(drop=True)
 
-    categories = sorted(
-        [c for c in df["category"].unique() if c != "Uncategorised"]
-    ) + (["Uncategorised"] if "Uncategorised" in df["category"].values else [])
+    # Category filter
+    all_cats = sorted([c for c in df["category"].unique() if c != "Uncategorised"])
+    if "Uncategorised" in df["category"].values:
+        all_cats.append("Uncategorised")
+    selected_cat = st.selectbox("Category", ["All"] + all_cats)
 
-    # Column header
-    hcol1, hcol2, hcol3, hcol4, hcol5, hcol6, _ = st.columns([3, 2, 2, 2, 2, 1, 1])
-    hcol1.markdown("**Name**")
-    hcol2.markdown("**Category**")
-    hcol3.markdown("**Lowest price**")
-    hcol4.markdown("**Cheapest site**")
-    hcol5.markdown("**In stock**")
-    hcol6.markdown("**Last updated**")
-    st.divider()
+    if selected_cat != "All":
+        df = df[df["category"] == selected_cat].reset_index(drop=True)
 
-    for cat in categories:
-        group = df[df["category"] == cat].sort_values("lowest_price", na_position="last")
-        st.subheader(cat)
+    # Build display dataframe
+    display_df = pd.DataFrame({
+        "Name": df["canonical_name"],
+        "Category": df["category"],
+        "Lowest price": df["lowest_price"],
+        "Item link": df.apply(
+            lambda r: r.get("product_url") or r.get("cheapest_site_url") or "",
+            axis=1,
+        ),
+        "In stock": df["sites_in_stock"].apply(
+            lambda n: f"{int(n)} site(s)" if n else "0 sites"
+        ),
+        "Last updated": df["last_updated"].apply(
+            lambda t: str(t or "Never")[:16]
+        ),
+        "_id": df["id"],
+    })
 
-        for _, row in group.iterrows():
-            price_display = (
-                f"{row['lowest_price']:.2f} {row['currency']}"
-                if pd.notna(row["lowest_price"])
-                else "—"
-            )
-            site_display = (
-                f"[{row['cheapest_site']}]({row['cheapest_site_url']})"
-                if row["cheapest_site"]
-                else "—"
-            )
-            in_stock_display = (
-                f"{int(row['sites_in_stock'])} site(s)"
-                if row["sites_in_stock"]
-                else "0 sites"
-            )
-            last_updated = str(row["last_updated"] or "Never")
+    event = st.dataframe(
+        display_df.drop(columns=["_id"]),
+        column_config={
+            "Name": st.column_config.TextColumn("Name"),
+            "Category": st.column_config.TextColumn("Category"),
+            "Lowest price": st.column_config.NumberColumn("Lowest price", format="%.2f"),
+            "Item link": st.column_config.LinkColumn("Item link"),
+            "In stock": st.column_config.TextColumn("In stock"),
+            "Last updated": st.column_config.TextColumn("Last updated"),
+        },
+        selection_mode="single-row",
+        on_select="rerun",
+        use_container_width=True,
+        hide_index=True,
+    )
 
-            col1, col2, col3, col4, col5, col6, col7 = st.columns([3, 2, 2, 2, 2, 1, 1])
-            col1.write(row["canonical_name"])
-            col2.write(row["category"])
-            col3.write(price_display)
-            col4.markdown(site_display, unsafe_allow_html=True)
-            col5.write(in_stock_display)
-            col6.write(last_updated[:16] if last_updated != "Never" else "Never")
-            if col7.button("View", key=f"view_{row['id']}"):
-                st.session_state["selected_product_id"] = int(row["id"])
-                st.rerun()
+    selected_rows = event.selection.rows
+    if selected_rows:
+        idx = selected_rows[0]
+        product_id = int(display_df.iloc[idx]["_id"])
+        product_name = str(display_df.iloc[idx]["Name"])
+        _show_listings_panel(product_id, product_name)
 
 
 # ── router ───────────────────────────────────────────────────────────────────
