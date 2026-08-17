@@ -2,6 +2,20 @@
 
 Confidence counts: **21 high**, **16 medium**, **3 low**.
 
+## Config fields the scraper reads
+
+- `site_name`, `method`, `selectors`, `stock_mode`, `confidence`, `notes` — as in every config.
+- `source_url` — the single category page to scrape.
+- `source_urls` — array form of the above, for sites that split products across
+  several category pages. Every URL is paginated on its own and all of them
+  report under one site identity (the first URL identifies the site row). Use
+  one or the other, not both; `source_urls` wins if both are present.
+- `decimal_separator` — `"dot"` or `"comma"` (default `"comma"`), how the site
+  prints prices.
+- `pagination.type` — `"none"`, `"url_pattern"`, or `"offset"`, plus
+  `url_pattern`, `max_pages`, and (offset only) `page_size` (default 60).
+- `disabled` / `disabled_reason` — skip the site in a run.
+
 ## High confidence (21)
 
 - casagrande.fi — Casagrande

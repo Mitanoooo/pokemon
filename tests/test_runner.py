@@ -23,7 +23,8 @@ def conn():
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _cfg(source_url="https://example.fi/shop/", max_pages=1, extra=None):
+def _cfg(source_url="https://example.fi/shop/", max_pages=1, extra=None,
+         source_urls=None):
     cfg = {
         "site_name": "Test Shop",
         "source_url": source_url,
@@ -37,6 +38,9 @@ def _cfg(source_url="https://example.fi/shop/", max_pages=1, extra=None):
         },
         "pagination": {"type": "none", "max_pages": max_pages},
     }
+    if source_urls:
+        del cfg["source_url"]
+        cfg["source_urls"] = source_urls
     if extra:
         cfg.update(extra)
     return cfg
@@ -747,3 +751,217 @@ def test_run_site_undercount_warning_does_not_mark_failure(conn, caplog):
     site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
     assert site["consecutive_failures"] == 0
     assert site["last_error"] is None
+
+
+# ── run_site: multiple source_urls under one site ────────────────────────────
+
+def _named_products(*names):
+    return [
+        {"raw_name": n, "price": 9.99, "in_stock": True, "product_url": "/p"}
+        for n in names
+    ]
+
+
+def _run_with_pages(cfg, products_by_url, conn):
+    """Run run_site serving one product list per URL.
+
+    The stub fetch hands the URL back as the page body so the stub scraper can
+    look that page's products up by it. Returns the URLs fetched, in order, and
+    the patched sleep.
+    """
+    fetched = []
+
+    def fake_fetch(url, **kwargs):
+        fetched.append(url)
+        return url
+
+    def fake_scrape(html, config):
+        return products_by_url.get(html, [])
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page", side_effect=fake_scrape), \
+         patch("scraper.runner.time.sleep") as mock_sleep:
+        run_site(cfg, conn)
+
+    return fetched, mock_sleep
+
+
+def _paged_cfg(urls, max_pages=2):
+    cfg = _cfg(source_urls=urls)
+    cfg["pagination"] = {
+        "type": "url_pattern",
+        "url_pattern": "?page={page}",
+        "max_pages": max_pages,
+    }
+    return cfg
+
+
+def test_run_site_source_urls_scrapes_every_url(conn):
+    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
+    fetched, _ = _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1", "A2"),
+        "https://example.fi/b": _named_products("B1"),
+    }, conn)
+
+    assert fetched == ["https://example.fi/a", "https://example.fi/b"]
+    names = [r["raw_name"] for r in conn.execute(
+        "SELECT raw_name FROM price_readings ORDER BY raw_name")]
+    assert names == ["A1", "A2", "B1"]
+
+
+def test_run_site_source_urls_share_one_site_row(conn):
+    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
+    _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1"),
+        "https://example.fi/b": _named_products("B1"),
+    }, conn)
+
+    sites = conn.execute("SELECT id, url, name FROM sites").fetchall()
+    assert len(sites) == 1
+    assert sites[0]["url"] == "https://example.fi/a"  # first URL identifies the site
+    site_ids = {r["site_id"] for r in conn.execute("SELECT site_id FROM price_readings")}
+    assert site_ids == {sites[0]["id"]}
+
+
+def test_run_site_source_urls_paginate_each_url_independently(conn):
+    cfg = _paged_cfg(["https://example.fi/a", "https://example.fi/b"])
+    fetched, _ = _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1", "A2"),
+        "https://example.fi/a?page=2": _named_products("A3"),
+        "https://example.fi/b": _named_products("B1", "B2"),
+        "https://example.fi/b?page=2": _named_products("B3"),
+    }, conn)
+
+    assert fetched == [
+        "https://example.fi/a",
+        "https://example.fi/a?page=2",
+        "https://example.fi/b",
+        "https://example.fi/b?page=2",
+    ]
+    assert conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0] == 6
+
+
+def test_run_site_source_urls_empty_page_only_stops_that_url(conn):
+    cfg = _paged_cfg(["https://example.fi/a", "https://example.fi/b"])
+    fetched, _ = _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1"),
+        "https://example.fi/a?page=2": [],
+        "https://example.fi/b": _named_products("B1"),
+        "https://example.fi/b?page=2": _named_products("B2"),
+    }, conn)
+
+    assert fetched == [
+        "https://example.fi/a",
+        "https://example.fi/a?page=2",
+        "https://example.fi/b",
+        "https://example.fi/b?page=2",
+    ]
+    names = [r["raw_name"] for r in conn.execute(
+        "SELECT raw_name FROM price_readings ORDER BY raw_name")]
+    assert names == ["A1", "B1", "B2"]
+
+
+def test_run_site_source_urls_currency_per_url(conn):
+    cfg = _cfg(source_urls=["https://example.se/a", "https://example.fi/b"])
+    _run_with_pages(cfg, {
+        "https://example.se/a": _named_products("SE1"),
+        "https://example.fi/b": _named_products("FI1"),
+    }, conn)
+
+    currencies = {r["raw_name"]: r["currency"] for r in conn.execute(
+        "SELECT raw_name, currency FROM price_readings")}
+    assert currencies == {"SE1": "SEK", "FI1": "EUR"}
+
+
+def test_run_site_source_urls_product_url_resolved_against_its_own_url(conn):
+    cfg = _cfg(source_urls=["https://example.fi/shop/a/", "https://other.fi/shop/b/"])
+    _run_with_pages(cfg, {
+        "https://example.fi/shop/a/": _named_products("A1"),
+        "https://other.fi/shop/b/": _named_products("B1"),
+    }, conn)
+
+    urls = {r["raw_name"]: r["product_url"] for r in conn.execute(
+        "SELECT raw_name, product_url FROM listings")}
+    assert urls == {"A1": "https://example.fi/p", "B1": "https://other.fi/p"}
+
+
+def test_run_site_source_urls_sleep_between_urls(conn):
+    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
+    _, mock_sleep = _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1"),
+        "https://example.fi/b": _named_products("B1"),
+    }, conn)
+
+    assert mock_sleep.call_count == 1  # between the two URLs, not before the first
+
+
+def test_run_site_source_urls_duplicate_raw_name_upserts_one_listing(conn):
+    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
+    _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("Shared Box"),
+        "https://example.fi/b": _named_products("Shared Box"),
+    }, conn)
+
+    assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 1
+    # One new_listing event only, despite the two sightings
+    events = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates")]
+    assert events == ["new_listing"]
+
+
+def test_run_site_duplicate_raw_name_writes_one_price_reading(conn):
+    """A product listed in two categories must not double its price history."""
+    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
+    _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("Shared Box"),
+        "https://example.fi/b": _named_products("Shared Box", "B1"),
+    }, conn)
+
+    names = [r["raw_name"] for r in conn.execute(
+        "SELECT raw_name FROM price_readings ORDER BY raw_name")]
+    assert names == ["B1", "Shared Box"]
+
+
+def test_run_site_source_urls_health_success_when_any_url_yields_products(conn):
+    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
+    _run_with_pages(cfg, {
+        "https://example.fi/a": [],
+        "https://example.fi/b": _named_products("B1"),
+    }, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 0
+    assert site["last_error"] is None
+
+
+def test_run_site_source_urls_fetch_failure_marks_site_failure(conn):
+    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
+
+    def fake_fetch(url, **kwargs):
+        if url.endswith("/b"):
+            raise FetchError("HTTP 500")
+        return url
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page", side_effect=lambda html, cfg_: _named_products("A1")), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 1
+    assert "500" in (site["last_error"] or "")
+    # the first URL's sighting still persisted
+    assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 1
+
+
+def test_run_site_source_urls_undercount_warning_names_the_url(conn, caplog):
+    cfg = _paged_cfg(["https://example.fi/a", "https://example.fi/b"])
+    _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1", "A2"),
+        "https://example.fi/a?page=2": _named_products("A3", "A4"),
+        "https://example.fi/b": _named_products("B1", "B2"),
+        "https://example.fi/b?page=2": _named_products("B3"),
+    }, conn)
+
+    undercount = [r.getMessage() for r in caplog.records if "max_pages" in r.getMessage()]
+    assert len(undercount) == 1
+    assert "https://example.fi/a" in undercount[0]

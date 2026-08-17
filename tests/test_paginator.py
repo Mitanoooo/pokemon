@@ -1,6 +1,6 @@
-"""Tests for scraper.paginator.paginate."""
+"""Tests for scraper.paginator."""
 import pytest
-from scraper.paginator import is_paginated, paginate
+from scraper.paginator import is_paginated, paginate, source_urls
 
 
 # ── none ─────────────────────────────────────────────────────────────────────
@@ -173,3 +173,47 @@ def test_is_paginated_false_when_pagination_missing_or_null():
 def test_is_paginated_true_for_url_pattern_and_offset():
     assert is_paginated({"pagination": {"type": "url_pattern"}}) is True
     assert is_paginated({"pagination": {"type": "offset"}}) is True
+
+
+# ── source_urls ───────────────────────────────────────────────────────────────
+
+def test_source_urls_returns_singular_source_url():
+    assert source_urls({"source_url": "https://example.com/shop"}) == [
+        "https://example.com/shop"
+    ]
+
+
+def test_source_urls_returns_every_configured_url():
+    cfg = {"source_urls": ["https://example.com/a", "https://example.com/b"]}
+    assert source_urls(cfg) == ["https://example.com/a", "https://example.com/b"]
+
+
+def test_source_urls_prefers_the_plural_field():
+    cfg = {
+        "source_url": "https://example.com/ignored",
+        "source_urls": ["https://example.com/a"],
+    }
+    assert source_urls(cfg) == ["https://example.com/a"]
+
+
+def test_paginate_defaults_to_first_source_url():
+    cfg = {
+        "source_urls": ["https://example.com/a", "https://example.com/b"],
+        "pagination": {"type": "none"},
+    }
+    assert paginate(cfg) == ["https://example.com/a"]
+
+
+def test_paginate_paginates_the_given_source_url():
+    cfg = {
+        "source_urls": ["https://example.com/a", "https://example.com/b"],
+        "pagination": {
+            "type": "url_pattern",
+            "url_pattern": "?page={page}",
+            "max_pages": 2,
+        },
+    }
+    assert paginate(cfg, "https://example.com/b") == [
+        "https://example.com/b",
+        "https://example.com/b?page=2",
+    ]

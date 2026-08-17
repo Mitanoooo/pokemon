@@ -1,3 +1,4 @@
+from typing import Optional
 from urllib.parse import urljoin
 
 
@@ -6,8 +7,22 @@ def is_paginated(config: dict) -> bool:
     return (config.get("pagination") or {}).get("type", "none") != "none"
 
 
-def paginate(config: dict) -> "list[str]":
-    source_url: str = config["source_url"]
+def source_urls(config: dict) -> "list[str]":
+    """Every entry URL of one site.
+
+    Sites whose products are split across category pages list them in
+    "source_urls"; everything else carries a single "source_url".
+    """
+    urls = config.get("source_urls")
+    if urls:
+        return list(urls)
+    return [config["source_url"]]
+
+
+def paginate(config: dict, source_url: Optional[str] = None) -> "list[str]":
+    """Page URLs for one of the site's entry URLs (the first one by default)."""
+    if source_url is None:
+        source_url = source_urls(config)[0]
     pagination: dict = config.get("pagination", {})
     ptype: str = pagination.get("type", "none")
 
