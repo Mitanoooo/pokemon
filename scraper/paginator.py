@@ -1,4 +1,4 @@
-from urllib.parse import urlparse
+from urllib.parse import urljoin
 
 
 def paginate(config: dict) -> "list[str]":
@@ -22,16 +22,12 @@ def _url_pattern(source_url: str, pagination: dict) -> list[str]:
     pattern: str = pagination["url_pattern"]
     max_pages: int = pagination.get("max_pages", 1)
 
-    parsed = urlparse(source_url)
-    base = f"{parsed.scheme}://{parsed.netloc}"
-
+    # urljoin covers all three pattern shapes in the configs: absolute URLs pass
+    # through, "/path/{page}" gets the source's scheme+host, and query-only
+    # "?page={page}" (Blockhouse Games) keeps the source path.
     urls = [source_url]
     for page in range(2, max_pages + 1):
-        raw = pattern.format(page=page)
-        if raw.startswith("/"):
-            urls.append(base + raw)
-        else:
-            urls.append(raw)
+        urls.append(urljoin(source_url, pattern.format(page=page)))
     return urls
 
 

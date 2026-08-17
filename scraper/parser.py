@@ -165,6 +165,10 @@ def _extract_name(container_el: Tag, config: dict) -> str:
 def _extract_url(container_el: Tag, config: dict) -> str:
     sel = _sel(config,"product_url")
     if not sel:
+        # Some shops (karukortti.fi) use the <a> itself as the product
+        # container, so there is no inner anchor to select — use its own href.
+        if container_el.name == "a":
+            return container_el.get("href", "") or ""
         return ""
     el = container_el.select_one(sel)
     if el is None:

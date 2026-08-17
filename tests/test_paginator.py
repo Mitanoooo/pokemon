@@ -66,6 +66,26 @@ def test_paginate_url_pattern_relative_page1_is_source_url():
     assert urls[0] == REL_CFG["source_url"]
 
 
+# ── url_pattern (query-string only) ───────────────────────────────────────────
+
+QUERY_CFG = {
+    "source_url": "https://blockhousegames.net/collections/pokemon-tcg",
+    "pagination": {
+        "type": "url_pattern",
+        "url_pattern": "?page={page}",
+        "max_pages": 2,
+    },
+}
+
+
+def test_paginate_url_pattern_query_only_resolved_against_source_url():
+    urls = paginate(QUERY_CFG)
+    assert urls == [
+        "https://blockhousegames.net/collections/pokemon-tcg",
+        "https://blockhousegames.net/collections/pokemon-tcg?page=2",
+    ]
+
+
 # ── offset ────────────────────────────────────────────────────────────────────
 
 OFFSET_CFG = {

@@ -323,3 +323,55 @@ def test_scrape_page_spelparken_currency_is_sek():
     html = Path("tests/fixtures/spelparken.se/page1.html").read_text()
     products = scrape_page(html, SPELPARKEN_CFG)
     assert all(p["currency"] == "SEK" for p in products)
+
+
+# ── product_url extraction: anchor-as-container (karukortti.fi) ────────────────
+
+# Mirrors site_configs/karukortti.fi.json — product_url is null because the
+# container itself is the <a>.
+KARUKORTTI_CFG = {
+    "site_name": "KaruKortti",
+    "selectors": {
+        "product_container": 'a[data-selector="list-product-view"]',
+        "product_name": '[data-selector="os-theme-product-list-name"]',
+        "price": '[data-selector="os-theme-product-list-price-regular"]',
+        "in_stock": ".product-sold-out-label",
+        "product_url": None,
+    },
+}
+
+
+def test_scrape_page_karukortti_product_count():
+    html = Path("tests/fixtures/karukortti.fi/page1.html").read_text()
+    products = scrape_page(html, KARUKORTTI_CFG)
+    assert len(products) == 8
+
+
+def test_scrape_page_karukortti_every_product_has_a_url():
+    """Container IS the anchor, so its own href is the product URL."""
+    html = Path("tests/fixtures/karukortti.fi/page1.html").read_text()
+    products = scrape_page(html, KARUKORTTI_CFG)
+    assert all(p["product_url"] for p in products)
+    assert all(
+        p["product_url"].startswith("https://karukortti.fi/product/")
+        for p in products
+    )
+
+
+def test_extract_url_container_href_may_be_relative():
+    """The href is returned verbatim; runner._absolute_url resolves it."""
+    html = '<div><a data-selector="list-product-view" href="/product/x">' \
+           '<span data-selector="os-theme-product-list-name">X</span></a></div>'
+    products = scrape_page(html, KARUKORTTI_CFG)
+    assert products[0]["product_url"] == "/product/x"
+
+
+def test_scrape_page_non_anchor_container_without_selector_has_no_url():
+    """No product_url selector and a non-anchor container → empty, not garbage."""
+    cfg = {
+        "site_name": "Test",
+        "selectors": {"product_container": "li.product", "product_name": "h3"},
+    }
+    html = '<ul><li class="product" href="/nope"><h3>Thing</h3></li></ul>'
+    products = scrape_page(html, cfg)
+    assert products[0]["product_url"] == ""
