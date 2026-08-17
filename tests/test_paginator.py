@@ -1,6 +1,6 @@
 """Tests for scraper.paginator.paginate."""
 import pytest
-from scraper.paginator import paginate
+from scraper.paginator import is_paginated, paginate
 
 
 # ── none ─────────────────────────────────────────────────────────────────────
@@ -140,3 +140,19 @@ def test_paginate_swagykarp_uses_page_pattern():
     assert "page/2" in urls[1]
     assert "page/5" in urls[4]
     assert all("swagykarp.fi" in u for u in urls)
+
+
+# ── is_paginated ──────────────────────────────────────────────────────────────
+
+def test_is_paginated_false_for_type_none():
+    assert is_paginated({"pagination": {"type": "none"}}) is False
+
+
+def test_is_paginated_false_when_pagination_missing_or_null():
+    assert is_paginated({}) is False
+    assert is_paginated({"pagination": None}) is False
+
+
+def test_is_paginated_true_for_url_pattern_and_offset():
+    assert is_paginated({"pagination": {"type": "url_pattern"}}) is True
+    assert is_paginated({"pagination": {"type": "offset"}}) is True

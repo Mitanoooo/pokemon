@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 from scraper import db
+from scraper.fetcher import FetchError
 from scraper.runner import run_site, run_all_sites
 
 SCHEMA = (Path(__file__).parent.parent / "schema.sql").read_text()
@@ -655,3 +656,94 @@ def test_run_site_back_in_stock_not_emitted_without_stock_mode(conn):
 
     types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
     assert "back_in_stock" not in types
+
+
+# ── run_site: fetch failures surface the cause ────────────────────────────────
+
+def test_run_site_fetch_error_message_lands_in_last_error(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch",
+               side_effect=FetchError("HTTP 403 for https://example.fi/shop/")):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert "HTTP 403" in (site["last_error"] or "")
+    assert site["consecutive_failures"] == 1
+
+
+def test_run_site_network_error_message_lands_in_last_error(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch",
+               side_effect=FetchError("ConnectTimeout: timed out for https://example.fi/shop/")):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert "ConnectTimeout" in (site["last_error"] or "")
+
+
+# ── run_site: max_pages undercount warning ────────────────────────────────────
+
+def _paginated_cfg(max_pages: int) -> dict:
+    cfg = _cfg()
+    cfg["pagination"] = {
+        "type": "url_pattern",
+        "url_pattern": "https://example.fi/shop/page/{page}/",
+        "max_pages": max_pages,
+    }
+    return cfg
+
+
+def test_run_site_warns_when_last_configured_page_still_had_products(conn, caplog):
+    cfg = _paginated_cfg(2)
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(2)), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any("max_pages" in m for m in warnings), warnings
+
+
+def test_run_site_no_undercount_warning_when_pagination_stopped_early(conn, caplog):
+    cfg = _paginated_cfg(3)
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", side_effect=[_products(2), _products(0)]), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert not any("max_pages" in m for m in warnings), warnings
+
+
+def test_run_site_no_undercount_warning_when_last_page_is_partial(conn, caplog):
+    """A shorter final page is the natural end of the listing, not an undercount."""
+    cfg = _paginated_cfg(2)
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", side_effect=[_products(4), _products(2)]), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert not any("max_pages" in m for m in warnings), warnings
+
+
+def test_run_site_no_undercount_warning_when_pagination_is_none(conn, caplog):
+    cfg = _cfg()  # pagination type "none"
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(2)):
+        run_site(cfg, conn)
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert not any("max_pages" in m for m in warnings), warnings
+
+
+def test_run_site_undercount_warning_does_not_mark_failure(conn, caplog):
+    cfg = _paginated_cfg(2)
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(2)), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 0
+    assert site["last_error"] is None

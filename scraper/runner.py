@@ -10,7 +10,7 @@ import sqlite3
 
 from scraper import db
 from scraper.fetcher import fetch
-from scraper.paginator import paginate
+from scraper.paginator import is_paginated, paginate
 from scraper.parser import scrape_page
 
 logger = logging.getLogger(__name__)
@@ -129,21 +129,25 @@ def run_site(
         all_readings: list[dict] = []
         all_products: list[dict] = []
         pages_fetched = 0
+        exhausted_pages = False
+        page_counts: list[int] = []
 
         for i, url in enumerate(urls):
             if i > 0:
                 time.sleep(random.uniform(1, 4))
 
+            # fetch raises FetchError naming the status code or exception type;
+            # the except block below records that message as last_error.
             html = fetch(url)
-            if html is None:
-                raise RuntimeError(f"fetch returned None for {url}")
-
             products = scrape_page(html, config)
             pages_fetched += 1
 
             if not products:
                 logger.info("%s: empty page at %s, stopping pagination", site_name, url)
+                exhausted_pages = True
                 break
+
+            page_counts.append(len(products))
 
             # Every sighting lands in listings — including price-less ones, so
             # they do not look brand new next run. This must stay ahead of the
@@ -171,6 +175,18 @@ def run_site(
                     site_name, skipped, url,
                 )
             all_readings.extend(valid)
+
+        # The last configured page came back as full as the first, so the shop
+        # probably has more pages that max_pages is cutting off. A last page with
+        # fewer products than the first is the natural end of the listing, and
+        # unpaginated configs have nothing to undercount — both stay quiet.
+        if (is_paginated(config) and not exhausted_pages
+                and page_counts and page_counts[-1] >= page_counts[0]):
+            logger.warning(
+                "%s: page %d of %d still returned a full page (%d products) — "
+                "max_pages may be too low",
+                site_name, pages_fetched, len(urls), page_counts[-1],
+            )
 
         # Generate and persist update events for all products seen this run.
         if all_products:

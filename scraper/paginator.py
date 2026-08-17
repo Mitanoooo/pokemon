@@ -1,6 +1,11 @@
 from urllib.parse import urljoin
 
 
+def is_paginated(config: dict) -> bool:
+    """True when the config declares more pages than the source_url itself."""
+    return (config.get("pagination") or {}).get("type", "none") != "none"
+
+
 def paginate(config: dict) -> "list[str]":
     source_url: str = config["source_url"]
     pagination: dict = config.get("pagination", {})
