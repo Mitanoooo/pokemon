@@ -2,6 +2,7 @@
   "site_name": "Spelexperten",
   "source_url": "https://www.spelexperten.fi/fi/seurapelit/pokemon",
   "method": "css",
+  "decimal_separator": "dot",
   "selectors": {
     "product_container": "div.PT_Wrapper",
     "product_name": "div.PT_Beskr a",

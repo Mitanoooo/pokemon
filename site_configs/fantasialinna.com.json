@@ -2,6 +2,7 @@
   "site_name": "Fantasialinna",
   "source_url": "https://www.fantasialinna.com/verkkokauppa/pokemon-1",
   "method": "css",
+  "decimal_separator": "dot",
   "selectors": {
     "product_container": "div.products-listing div.item",
     "product_name": ".name h2",

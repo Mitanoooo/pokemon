@@ -39,10 +39,11 @@ def _url_pattern(source_url: str, pagination: dict) -> list[str]:
 def _offset(source_url: str, pagination: dict) -> list[str]:
     pattern: str = pagination["url_pattern"]
     max_pages: int = pagination.get("max_pages", 1)
+    page_size: int = pagination.get("page_size", 60)
 
     urls = [source_url]
     for page in range(2, max_pages + 1):
-        offset = (page - 1) * 60
+        offset = (page - 1) * page_size
         urls.append(source_url + pattern.format(offset=offset))
     return urls
 

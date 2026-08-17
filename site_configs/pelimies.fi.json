@@ -2,6 +2,7 @@
   "site_name": "Pelimies",
   "source_url": "https://pelimies.fi/pokemon-tcg-trading-card-game-tuotteet/",
   "method": "css",
+  "decimal_separator": "dot",
   "selectors": {
     "product_container": ".product",
     "product_name": ".woocommerce-loop-product__title",

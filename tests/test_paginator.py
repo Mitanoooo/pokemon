@@ -114,6 +114,23 @@ def test_paginate_offset_respects_max_pages():
     assert len(urls) == 3
 
 
+def test_paginate_offset_uses_configured_page_size():
+    cfg = {
+        "source_url": "https://example.com/shop",
+        "pagination": {
+            "type": "offset",
+            "url_pattern": "?offset={offset}",
+            "max_pages": 3,
+            "page_size": 24,
+        },
+    }
+    assert paginate(cfg) == [
+        "https://example.com/shop",
+        "https://example.com/shop?offset=24",
+        "https://example.com/shop?offset=48",
+    ]
+
+
 # ── swagykarp (url_pattern with known absolute pattern) ───────────────────────
 
 SWAGYKARP_CFG = {

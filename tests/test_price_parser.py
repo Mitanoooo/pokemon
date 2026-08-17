@@ -20,17 +20,27 @@ def test_comma_decimal_with_xa0_before_euro():
 
 # ── dot decimal ───────────────────────────────────────────────────────────────
 
+DOT = {"decimal_separator": "dot"}
+
+
 def test_dot_decimal_with_euro_suffix():
     # maxgaming.fi: "219.90 €"
-    assert parse_price("219.90 €", {"site_name": "MaxGaming"}) == 219.90
+    assert parse_price("219.90 €", {"site_name": "MaxGaming", **DOT}) == 219.90
 
 def test_dot_decimal_euro_prefix():
     # spelexperten.fi: "€7.55"
-    assert parse_price("€7.55", {"site_name": "Spelexperten"}) == 7.55
+    assert parse_price("€7.55", {"site_name": "Spelexperten", **DOT}) == 7.55
 
 def test_dot_decimal_pelimies():
     # pelimies.fi: "49.90 €"
-    assert parse_price("49.90 €", {"site_name": "Pelimies"}) == 49.90
+    assert parse_price("49.90 €", {"site_name": "Pelimies", **DOT}) == 49.90
+
+def test_decimal_separator_comma_is_explicit_default():
+    assert parse_price("39,90 €", {"decimal_separator": "comma"}) == 39.90
+
+def test_site_name_alone_no_longer_implies_dot_decimal():
+    # The hardcoded dot-decimal site set is gone — only the config field decides.
+    assert parse_price("219,90 €", {"site_name": "MaxGaming"}) == 219.90
 
 
 # ── € prefix stripping ────────────────────────────────────────────────────────
@@ -45,7 +55,7 @@ def test_euro_prefix_godofcards():
 
 def test_euro_prefix_pelikrypta_dot():
     # pelikrypta.fi: "€7.00"
-    assert parse_price("€7.00", {"site_name": "Pelikrypta (Ikamaa)"}) == 7.00
+    assert parse_price("€7.00", {"site_name": "Pelikrypta (Ikamaa)", "decimal_separator": "dot"}) == 7.00
 
 
 # ── EUR suffix stripping ──────────────────────────────────────────────────────
@@ -99,7 +109,7 @@ def test_sale_price_with_space():
 # ── bare float (lelupartanen.fi itemprop) ────────────────────────────────────
 
 def test_bare_float_dot_decimal():
-    assert parse_price("16.95", {"site_name": "Lelukauppa Partanen"}) == 16.95
+    assert parse_price("16.95", {"site_name": "Lelukauppa Partanen", "decimal_separator": "dot"}) == 16.95
 
 
 # ── suspicious prices ─────────────────────────────────────────────────────────

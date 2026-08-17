@@ -4,24 +4,14 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Sites that use a dot as decimal separator
-_DOT_DECIMAL_SITES = {
-    "MaxGaming",
-    "Spelexperten",
-    "Pelimies",
-    "Lelukauppa Partanen",
-    "Karkkainen.com verkkokauppa",
-    "Pelikrypta (Ikamaa)",
-    "Fantasialinna",
-}
-
 
 def parse_price(raw_text: str, config: dict) -> Optional[float]:
     """Parse a raw price string into a float.
 
     Handles all Finnish/Swedish retailer price format variants documented in
-    site_notes.md.  Returns None and logs a warning for suspicious values
-    (< 2.0 or > 2000.0).
+    site_notes.md.  The config's optional "decimal_separator" key ("dot" or
+    "comma", default "comma") says which separator the site prints.  Returns
+    None and logs a warning for suspicious values (< 2.0 or > 2000.0).
     """
     site_name = config.get("site_name", "")
     text = raw_text
@@ -58,8 +48,7 @@ def parse_price(raw_text: str, config: dict) -> Optional[float]:
     last_token = last_token.replace(" ", "")
 
     # 10. Convert decimal separator: comma → dot (unless site uses dot decimal)
-    use_dot = site_name in _DOT_DECIMAL_SITES
-    if use_dot:
+    if config.get("decimal_separator", "comma") == "dot":
         # dot is already the decimal separator; remove any commas (thousands)
         last_token = last_token.replace(",", "")
     else:

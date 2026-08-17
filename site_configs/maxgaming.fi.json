@@ -2,6 +2,7 @@
   "site_name": "MaxGaming",
   "source_url": "https://www.maxgaming.fi/fi/pokemon",
   "method": "css",
+  "decimal_separator": "dot",
   "selectors": {
     "product_container": "div.PT_Wrapper",
     "product_name": ".PT_Beskr",
