@@ -132,6 +132,26 @@ def test_price_exactly_2000_is_valid():
     assert parse_price("2000,00 €", {}) == 2000.00
 
 
+# ── per-config max_price override ─────────────────────────────────────────────
+# Some shops list factory cases (porvoonpelikauppa.fi "tehdaslaatikko") well
+# above the default 2000 € ceiling, so the ceiling is raisable per site.
+
+def test_max_price_override_admits_a_factory_case_price():
+    assert parse_price("2 850,00 € ", {"max_price": 5000.0}) == 2850.00
+
+def test_max_price_override_still_rejects_above_its_own_ceiling():
+    assert parse_price("6 000,00 €", {"max_price": 5000.0}) is None
+
+def test_max_price_override_does_not_relax_the_lower_bound():
+    assert parse_price("1,00 €", {"max_price": 5000.0}) is None
+
+def test_max_price_override_boundary_is_inclusive():
+    assert parse_price("5000,00 €", {"max_price": 5000.0}) == 5000.00
+
+def test_default_ceiling_unchanged_without_override():
+    assert parse_price("2 850,00 €", {}) is None
+
+
 # ── Peliparatiisi: comma decimal, not dot decimal ────────────────────────────
 
 def test_peliparatiisi_comma_decimal_not_multiplied():

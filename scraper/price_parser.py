@@ -4,6 +4,22 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+MIN_PRICE = 2.0
+DEFAULT_MAX_PRICE = 2000.0
+
+
+def within_price_bounds(value: float, config: dict) -> bool:
+    """True when value is a plausible sealed-product price for this site.
+
+    The ceiling is raisable per site with "max_price" (porvoonpelikauppa.fi
+    lists whole factory cases); the floor is not, because no shop legitimately
+    lists sealed product under 2 € — that value is always a placeholder.
+
+    Callers reading a price out of an HTML attribute use this directly;
+    parse_price applies it to the value it has parsed out of the page text.
+    """
+    return MIN_PRICE <= value <= float(config.get("max_price") or DEFAULT_MAX_PRICE)
+
 
 def parse_price(raw_text: str, config: dict) -> Optional[float]:
     """Parse a raw price string into a float.
@@ -11,7 +27,8 @@ def parse_price(raw_text: str, config: dict) -> Optional[float]:
     Handles all Finnish/Swedish retailer price format variants documented in
     site_notes.md.  The config's optional "decimal_separator" key ("dot" or
     "comma", default "comma") says which separator the site prints.  Returns
-    None and logs a warning for suspicious values (< 2.0 or > 2000.0).
+    None and logs a warning for suspicious values — below 2.0, or above the
+    config's optional "max_price" (default 2000.0).
     """
     site_name = config.get("site_name", "")
     text = raw_text
@@ -64,7 +81,7 @@ def parse_price(raw_text: str, config: dict) -> Optional[float]:
 
     # 11. Suspicious price guard (EUR only — SEK prices legitimately exceed 2000)
     is_sek = bool(re.search(r"\bkr\b", raw_text))
-    if not is_sek and (value < 2.0 or value > 2000.0):
+    if not is_sek and not within_price_bounds(value, config):
         logger.warning(
             "Suspicious price %.2f from %r — returning None (site: %s)",
             value, raw_text, site_name,

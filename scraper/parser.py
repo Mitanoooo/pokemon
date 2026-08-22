@@ -4,7 +4,7 @@ from typing import Optional
 
 from bs4 import BeautifulSoup, Tag
 
-from scraper.price_parser import parse_price
+from scraper.price_parser import parse_price, within_price_bounds
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ def _extract_price(container_el: Tag, config: dict) -> Optional[float]:
     if ls_price is not None:
         try:
             value = float(ls_price)
-            if value < 2.0 or value > 2000.0:
+            if not within_price_bounds(value, config):
                 logger.warning("Suspicious attribute price %.2f (site: %s)", value, site_name)
                 return None
             return value
@@ -115,9 +115,16 @@ def _extract_price(container_el: Tag, config: dict) -> Optional[float]:
             itemprop_price = itemprop_el.get("content")
     if itemprop_price is not None:
         try:
-            return float(itemprop_price)
+            value = float(itemprop_price)
         except ValueError:
             pass
+        else:
+            # Same bounds as every other price path — an attribute placeholder
+            # is no more trustworthy than one printed in the page text.
+            if not within_price_bounds(value, config):
+                logger.warning("Suspicious attribute price %.2f (site: %s)", value, site_name)
+                return None
+            return value
 
     # WooCommerce <ins>/<del>: extract <ins> text only
     ins_el = el.select_one("ins")

@@ -2,6 +2,7 @@
   "site_name": "Porvoon Pelikauppa",
   "source_url": "https://porvoonpelikauppa.fi/pokemon-booster-laatikot-ja-bundlet",
   "method": "css",
+  "max_price": 5000.0,
   "selectors": {
     "product_container": ".card.item-widget",
     "product_name": ".card-title.item-brand",
@@ -16,5 +17,5 @@
     "max_pages": 1
   },
   "confidence": "high",
-  "notes": "Custom Finnish webshop platform. All 30 products ('30 tuotetta' shown on page) render on a single page with no pagination controls. in_stock selector is inverted: presence of '.out-of-stock' (badge text 'Tilapäisesti loppu') means OUT of stock — absence of this element within the product container means in-stock."
+  "notes": "Custom Finnish webshop platform. All products render on a single page with no pagination controls (24 cards for a stated '28 tuotetta' — 4 of the counted products never reach the HTML, so a small coverage gap is expected). in_stock selector is inverted: presence of '.out-of-stock' (badge text 'Tilapäisesti loppu') means OUT of stock — absence of this element within the product container means in-stock. max_price is raised to 5000 because this shop lists whole factory cases ('tehdaslaatikko', 2400-3800 €) that the default 2000 € guard would drop as suspicious; one pre-order card carries a 1,00 € placeholder price that the lower bound correctly rejects."
 }

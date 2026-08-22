@@ -204,6 +204,28 @@ def test_scrape_page_karkkainen_reads_attribute_price():
     # First product price comes from data-ls-price attr (6.49)
     assert products[0]["price"] == 6.49
 
+def test_attribute_price_honours_max_price_override():
+    """The data-ls-price path shares parse_price's configurable ceiling."""
+    html = '<li class="p"><span class="lipscore-rating-small" data-ls-price="2850.0"></span></li>'
+    cfg = {"selectors": {"product_container": "li.p", "price": ".lipscore-rating-small"}}
+    assert scrape_page(html, cfg)[0]["price"] is None
+    assert scrape_page(html, {**cfg, "max_price": 5000.0})[0]["price"] == 2850.0
+
+def test_itemprop_price_honours_the_suspicious_price_guard():
+    """The itemprop="Price" path shares the same bounds as the text path."""
+    cfg = {"selectors": {"product_container": "li.p", "price": ".pr"}}
+    def price_for(content):
+        html = f'<li class="p"><span class="pr" itemprop="Price" content="{content}"></span></li>'
+        return scrape_page(html, cfg)[0]["price"]
+    assert price_for("16.95") == 16.95
+    assert price_for("0.01") is None
+    assert price_for("1340453.94") is None
+
+def test_itemprop_price_honours_max_price_override():
+    cfg = {"selectors": {"product_container": "li.p", "price": ".pr"}, "max_price": 5000.0}
+    html = '<li class="p"><span class="pr" itemprop="Price" content="2850.0"></span></li>'
+    assert scrape_page(html, cfg)[0]["price"] == 2850.0
+
 def test_scrape_page_karkkainen_reads_attribute_stock():
     html = Path("tests/fixtures/karkkainen.com/page1.html").read_text()
     products = scrape_page(html, KARKKAINEN_CFG)
