@@ -2,6 +2,7 @@
   "site_name": "Poromagia",
   "source_url": "https://poromagia.com/fi/catalogue/category/pokemon/pokemon-tuotepakkaukset/pokemon-boosterit_385/",
   "method": "css",
+  "stock_mode": "normal",
   "selectors": {
     "product_container": "article.product_line",
     "product_name": "h3 a",

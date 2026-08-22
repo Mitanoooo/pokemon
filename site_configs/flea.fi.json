@@ -2,6 +2,7 @@
   "site_name": "Flea Lelukauppa",
   "source_url": "https://www.flea.fi/collections/pokemon",
   "method": "css",
+  "stock_mode": "unknown",
   "selectors": {
     "product_container": ".tt-product.product-parent",
     "product_name": "h2.tt-title a",

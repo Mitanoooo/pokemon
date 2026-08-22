@@ -2,11 +2,12 @@
   "site_name": "Muksumassi",
   "source_url": "https://muksumassi.fi/kerailykortit/pokemon-boosterit/",
   "method": "css",
+  "stock_mode": "container_class",
   "selectors": {
     "product_container": "ul.products li.product",
     "product_name": "h5 a",
     "price": ".woocommerce-Price-amount",
-    "in_stock": null,
+    "in_stock": "li.product.instock",
     "product_url": "h5 a"
   },
   "pagination": {

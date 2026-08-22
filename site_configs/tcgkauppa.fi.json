@@ -2,11 +2,12 @@
   "site_name": "TCG-kauppa",
   "source_url": "https://www.tcgkauppa.fi/tuote-osasto/pokemon/pokemon-booster/",
   "method": "css",
+  "stock_mode": "container_class",
   "selectors": {
     "product_container": "li.product",
     "product_name": "h3.product-title a",
     "price": "span.price",
-    "in_stock": ".instock",
+    "in_stock": "li.product.instock",
     "product_url": "h3.product-title a"
   },
   "pagination": {

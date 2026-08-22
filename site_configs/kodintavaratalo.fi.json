@@ -2,6 +2,7 @@
   "site_name": "JR Kodintavaratalo",
   "source_url": "https://kodintavaratalo.fi/pokemon",
   "method": "css",
+  "stock_mode": "unknown",
   "selectors": {
     "product_container": "div.card.item-widget",
     "product_name": "h5.card-title.item-brand",

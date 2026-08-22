@@ -2,12 +2,13 @@
   "site_name": "Pelimies",
   "source_url": "https://pelimies.fi/pokemon-tcg-trading-card-game-tuotteet/",
   "method": "css",
+  "stock_mode": "normal",
   "decimal_separator": "dot",
   "selectors": {
     "product_container": ".product",
     "product_name": ".woocommerce-loop-product__title",
     "price": ".price .woocommerce-Price-amount",
-    "in_stock": null,
+    "in_stock": "a.add_to_cart_button",
     "product_url": "a.woocommerce-loop-product__link"
   },
   "pagination": {

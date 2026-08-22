@@ -2,6 +2,7 @@
   "site_name": "Porvoon Pelikauppa",
   "source_url": "https://porvoonpelikauppa.fi/pokemon-booster-laatikot-ja-bundlet",
   "method": "css",
+  "stock_mode": "inverted",
   "max_price": 5000.0,
   "selectors": {
     "product_container": ".card.item-widget",

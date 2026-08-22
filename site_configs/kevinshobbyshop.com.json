@@ -2,11 +2,12 @@
   "site_name": "Kevin's Hobby Shop",
   "source_url": "https://kevinshobbyshop.com/shop/?yith_wcan=1&filter_game=pokemon&query_type_game=or&filter_product-type=sealed&query_type_product-type=or",
   "method": "css",
+  "stock_mode": "container_class",
   "selectors": {
     "product_container": "li.product.type-product",
     "product_name": ".woocommerce-loop-product__title",
     "price": "span.price .woocommerce-Price-amount",
-    "in_stock": null,
+    "in_stock": "li.product.type-product.instock",
     "product_url": ".woocommerce-LoopProduct-link"
   },
   "pagination": {

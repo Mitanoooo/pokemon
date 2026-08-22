@@ -2,6 +2,7 @@
   "site_name": "Blockhouse Games",
   "source_url": "https://blockhousegames.net/collections/pokemon-tcg",
   "method": "css",
+  "stock_mode": "normal",
   "selectors": {
     "product_container": "div.product-item.product-item--vertical",
     "product_name": ".product-item__title",

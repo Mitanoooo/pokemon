@@ -2,11 +2,13 @@
   "site_name": "Korttistoppi",
   "source_url": "https://www.korttistoppi.fi/tuoteryhma/boosterit",
   "method": "css",
+  "stock_mode": "badge_text",
+  "stock_badge_text": "Loppunut",
   "selectors": {
     "product_container": ".product-card-grid-item",
     "product_name": ".product-name-text",
     "price": ".text-price",
-    "in_stock": null,
+    "in_stock": ".product-badge-content",
     "product_url": "a[href*='/tuote/']"
   },
   "pagination": {

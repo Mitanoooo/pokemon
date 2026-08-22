@@ -2,6 +2,7 @@
   "site_name": "Karkkainen.com verkkokauppa",
   "source_url": "https://www.karkkainen.com/verkkokauppa/kerailykortit",
   "method": "css",
+  "stock_mode": "normal",
   "decimal_separator": "dot",
   "selectors": {
     "product_container": "[data-testid=\"product-card-container\"]",

@@ -2,6 +2,7 @@
   "site_name": "Pelikrypta (Ikamaa)",
   "source_url": "https://pelikrypta.fi/collections/pokemon-trading-card-game",
   "method": "css",
+  "stock_mode": "unknown",
   "decimal_separator": "dot",
   "selectors": {
     "product_container": "li.grid__item",

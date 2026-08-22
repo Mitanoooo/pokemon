@@ -2,6 +2,7 @@
   "site_name": "KaruKortti",
   "source_url": "https://karukortti.fi/kategoria/booster-box",
   "method": "css",
+  "stock_mode": "inverted",
   "selectors": {
     "product_container": "a[data-selector=\"list-product-view\"]",
     "product_name": "[data-selector=\"os-theme-product-list-name\"]",

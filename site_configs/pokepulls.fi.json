@@ -2,11 +2,12 @@
   "site_name": "PokePulls",
   "source_url": "https://pokepulls.fi/kategoria/boosterit",
   "method": "css",
+  "stock_mode": "inverted",
   "selectors": {
     "product_container": "a[data-selector='list-product-view']",
     "product_name": "[data-selector='os-theme-product-list-name']",
     "price": "[data-selector='os-theme-product-list-price-regular']",
-    "in_stock": null,
+    "in_stock": "span.product-sold-out-label",
     "product_url": "a[data-selector='list-product-view']"
   },
   "pagination": {

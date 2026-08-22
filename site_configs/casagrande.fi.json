@@ -2,6 +2,7 @@
   "site_name": "Casagrande",
   "source_url": "https://casagrande.fi/collections/pokemon",
   "method": "css",
+  "stock_mode": "inverted",
   "selectors": {
     "product_container": ".product-item",
     "product_name": ".product-item-meta__title",

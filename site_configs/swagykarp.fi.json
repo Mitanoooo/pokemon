@@ -2,11 +2,12 @@
   "site_name": "Swagykarp",
   "source_url": "https://swagykarp.fi/product-category/pokemon-tuotteet/boosterit/",
   "method": "css",
+  "stock_mode": "container_class",
   "selectors": {
     "product_container": "ul.products li.product",
     "product_name": ".woocommerce-loop-product__title, h2.woocommerce-loop-product__title",
     "price": "span.price",
-    "in_stock": null,
+    "in_stock": "li.product.instock",
     "product_url": "a.woocommerce-LoopProduct-link, a[href*='/product/']"
   },
   "pagination": {

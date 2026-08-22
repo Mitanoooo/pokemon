@@ -2,11 +2,12 @@
   "site_name": "Keräilykortti.fi",
   "source_url": "https://www.xn--kerilykortti-icb.fi/englanti-pokemon-booster-pakkaukset/",
   "method": "css",
+  "stock_mode": "container_class",
   "selectors": {
     "product_container": "ul.products li.product",
     "product_name": "h2.woocommerce-loop-product__title",
     "price": "span.price",
-    "in_stock": null,
+    "in_stock": "li.product.instock",
     "product_url": "a.woocommerce-LoopProduct-link, h2.woocommerce-loop-product__title a"
   },
   "pagination": {

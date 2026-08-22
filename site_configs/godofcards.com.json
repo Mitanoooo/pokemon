@@ -2,6 +2,7 @@
   "site_name": "God of Cards",
   "source_url": "https://godofcards.com/en-fi/collections/english-pokemon-cards?filter.v.availability=1",
   "method": "css",
+  "stock_mode": "unknown",
   "selectors": {
     "product_container": ".product-list product-card",
     "product_name": ".product-card__title a",

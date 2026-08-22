@@ -2,6 +2,7 @@
   "site_name": "Elli Madelli",
   "source_url": "https://www.ellimadelli.fi/collections/pokemon",
   "method": "css",
+  "stock_mode": "normal",
   "selectors": {
     "product_container": ".productgrid--item",
     "product_name": ".productitem--title a",
