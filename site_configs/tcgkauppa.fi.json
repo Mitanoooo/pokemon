@@ -1,6 +1,21 @@
 {
   "site_name": "TCG-kauppa",
-  "source_url": "https://www.tcgkauppa.fi/tuote-osasto/pokemon/pokemon-booster/",
+  "source_urls": [
+    "https://www.tcgkauppa.fi/tuote-osasto/pokemon/pokemon-booster/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/booster-display/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/elite-trainer-box/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/tin/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/blister/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/collection-box/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/premium-collection/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/collector-chest/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/gift-box/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/bundle/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/booster-bundle/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/special-release/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/starter-deck/",
+    "https://www.tcgkauppa.fi/tuotetyyppi/theme-deck/"
+  ],
   "method": "css",
   "stock_mode": "container_class",
   "selectors": {
@@ -13,7 +28,7 @@
   "pagination": {
     "type": "url_pattern",
     "selector": "a.page-numbers",
-    "url_pattern": "https://www.tcgkauppa.fi/tuote-osasto/pokemon/pokemon-booster/page/{page}/",
+    "url_pattern": "page/{page}/",
     "max_pages": 5
   },
   "confidence": "high",

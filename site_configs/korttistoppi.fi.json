@@ -1,6 +1,19 @@
 {
   "site_name": "Korttistoppi",
-  "source_url": "https://www.korttistoppi.fi/tuoteryhma/boosterit",
+  "source_urls": [
+    "https://www.korttistoppi.fi/tuoteryhma/boosterit",
+    "https://www.korttistoppi.fi/tuoteryhma/blisterit",
+    "https://www.korttistoppi.fi/tuoteryhma/tinit",
+    "https://www.korttistoppi.fi/tuoteryhma/elite-trainer-boksit",
+    "https://www.korttistoppi.fi/tuoteryhma/collection-boksit",
+    "https://www.korttistoppi.fi/tuoteryhma/collectors-chestit",
+    "https://www.korttistoppi.fi/tuoteryhma/theme-deckit",
+    "https://www.korttistoppi.fi/tuoteryhma/erikoisjulkaisut",
+    "https://www.korttistoppi.fi/tuoteryhma/kombot-ja-mixit",
+    "https://www.korttistoppi.fi/tuoteryhma/japaninkieliset",
+    "https://www.korttistoppi.fi/tuoteryhma/simplified-chinese-kiinankieliset",
+    "https://www.korttistoppi.fi/tuoteryhma/30th-celebration"
+  ],
   "method": "css",
   "stock_mode": "badge_text",
   "stock_badge_text": "Loppunut",

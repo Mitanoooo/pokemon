@@ -1,6 +1,13 @@
 {
   "site_name": "Swagykarp",
-  "source_url": "https://swagykarp.fi/product-category/pokemon-tuotteet/boosterit/",
+  "source_urls": [
+    "https://swagykarp.fi/product-category/pokemon-tcg/boosterit/",
+    "https://swagykarp.fi/product-category/pokemon-tcg/elite-trainer-boxes/",
+    "https://swagykarp.fi/product-category/pokemon-tcg/lahja-tinit/",
+    "https://swagykarp.fi/product-category/pokemon-tcg/collection-boxit/",
+    "https://swagykarp.fi/product-category/pokemon-tcg/blisterit/",
+    "https://swagykarp.fi/product-category/pokemon-tcg/battle-deckit/"
+  ],
   "method": "css",
   "stock_mode": "container_class",
   "selectors": {
@@ -13,7 +20,7 @@
   "pagination": {
     "type": "url_pattern",
     "selector": null,
-    "url_pattern": "https://swagykarp.fi/product-category/pokemon-tuotteet/boosterit/page/{page}/",
+    "url_pattern": "page/{page}/",
     "max_pages": 5
   },
   "confidence": "medium",

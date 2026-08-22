@@ -1,6 +1,15 @@
 {
   "site_name": "PokePulls",
-  "source_url": "https://pokepulls.fi/kategoria/boosterit",
+  "source_urls": [
+    "https://pokepulls.fi/kategoria/boosterit",
+    "https://pokepulls.fi/kategoria/blisterit",
+    "https://pokepulls.fi/kategoria/collection-boxit-1",
+    "https://pokepulls.fi/kategoria/collector-s-chestit",
+    "https://pokepulls.fi/kategoria/elite-trainer-boxit",
+    "https://pokepulls.fi/kategoria/battle-and-theme-deckit",
+    "https://pokepulls.fi/kategoria/tinit",
+    "https://pokepulls.fi/kategoria/premium-tournament-collection"
+  ],
   "method": "css",
   "stock_mode": "inverted",
   "selectors": {

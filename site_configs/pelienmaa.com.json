@@ -1,6 +1,13 @@
 {
   "site_name": "Pelien Maa",
-  "source_url": "https://pelienmaa.com/collections/pokemon-booster-box",
+  "source_urls": [
+    "https://pelienmaa.com/collections/pokemon-booster-box",
+    "https://pelienmaa.com/collections/pokemon-booster",
+    "https://pelienmaa.com/collections/pokemon-etb",
+    "https://pelienmaa.com/collections/pokemon-blister",
+    "https://pelienmaa.com/collections/pokemon-tins",
+    "https://pelienmaa.com/collections/pokemon-boxes-sets"
+  ],
   "method": "css",
   "selectors": {
     "product_container": null,

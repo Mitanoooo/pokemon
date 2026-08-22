@@ -1,6 +1,10 @@
 {
   "site_name": "Keräilykortti.fi",
-  "source_url": "https://www.xn--kerilykortti-icb.fi/englanti-pokemon-booster-pakkaukset/",
+  "source_urls": [
+    "https://www.xn--kerilykortti-icb.fi/englanti-pokemon-booster-pakkaukset/",
+    "https://www.xn--kerilykortti-icb.fi/japani-pokemon-booster-pakkaukset/",
+    "https://www.xn--kerilykortti-icb.fi/pokemon-boosterit/"
+  ],
   "method": "css",
   "stock_mode": "container_class",
   "selectors": {
@@ -13,7 +17,7 @@
   "pagination": {
     "type": "url_pattern",
     "selector": null,
-    "url_pattern": "https://www.xn--kerilykortti-icb.fi/englanti-pokemon-booster-pakkaukset/page/{page}/",
+    "url_pattern": "page/{page}/",
     "max_pages": 5
   },
   "confidence": "medium",

@@ -1,6 +1,13 @@
 {
   "site_name": "KaruKortti",
-  "source_url": "https://karukortti.fi/kategoria/booster-box",
+  "source_urls": [
+    "https://karukortti.fi/kategoria/booster-box",
+    "https://karukortti.fi/category/boosterit",
+    "https://karukortti.fi/category/elite-trainer-box",
+    "https://karukortti.fi/category/boxit-and-tinit",
+    "https://karukortti.fi/category/ultra-premium-collection",
+    "https://karukortti.fi/category/japaninkieliset"
+  ],
   "method": "css",
   "stock_mode": "inverted",
   "selectors": {

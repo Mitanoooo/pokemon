@@ -1,6 +1,15 @@
 {
   "site_name": "VPD Pelikauppa",
-  "source_url": "https://www.vpd.fi/pokemon-kortit/boosterit.html",
+  "source_urls": [
+    "https://www.vpd.fi/pokemon-kortit/boosterit.html",
+    "https://www.vpd.fi/pokemon-kortit/displayt.html",
+    "https://www.vpd.fi/pokemon-kortit/elite-trainerit.html",
+    "https://www.vpd.fi/pokemon-kortit/battle-deckit.html",
+    "https://www.vpd.fi/pokemon-kortit/v-boxit.html",
+    "https://www.vpd.fi/pokemon-kortit/ex-boxit.html",
+    "https://www.vpd.fi/pokemon-kortit/checklane-blisterit.html",
+    "https://www.vpd.fi/pokemon-kortit/premium-collecton-box.html"
+  ],
   "method": "css",
   "selectors": {
     "product_container": "li.product-item",
@@ -12,7 +21,7 @@
   "pagination": {
     "type": "url_pattern",
     "selector": ".pages-item-next a",
-    "url_pattern": "https://www.vpd.fi/pokemon-kortit/boosterit.html?p={page}",
+    "url_pattern": "?p={page}",
     "max_pages": 11
   },
   "disabled": true,
