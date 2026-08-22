@@ -21,7 +21,15 @@ class FetchError(Exception):
     The message names the cause — "HTTP 403 for <url>" or
     "<ExceptionType>: <message> for <url>" — because run_site records it in
     the sites.last_error column the health page reads.
+
+    status_code carries the HTTP status when there was one (None for network
+    errors), so callers can tell a 404 — which shops use to mean "no such
+    page", i.e. the end of a listing — apart from a real failure.
     """
+
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def fetch(url: str, config: Optional[dict] = None) -> str:
@@ -35,7 +43,7 @@ def fetch(url: str, config: Optional[dict] = None) -> str:
         raise FetchError(f"{type(exc).__name__}: {_trim(str(exc))} for {url}") from exc
 
     if resp.status_code >= 400:
-        raise FetchError(f"HTTP {resp.status_code} for {url}")
+        raise FetchError(f"HTTP {resp.status_code} for {url}", resp.status_code)
 
     return resp.text
 

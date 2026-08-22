@@ -9,7 +9,7 @@ from urllib.parse import urljoin, urlparse
 import sqlite3
 
 from scraper import db
-from scraper.fetcher import fetch
+from scraper.fetcher import FetchError, fetch
 from scraper.paginator import is_paginated, paginate, source_urls
 from scraper.parser import scrape_page
 
@@ -149,7 +149,21 @@ def _scrape_source_url(
 
         # fetch raises FetchError naming the status code or exception type;
         # run_site's except block records that message as last_error.
-        html = fetch(url)
+        if i == 0:
+            html = fetch(url)
+        else:
+            # Past page 1, a 404 is how WooCommerce and friends say "no such
+            # page" — the listing simply ended before max_pages. Anything else
+            # (403, 500, a timeout) is a real failure and propagates.
+            try:
+                html = fetch(url)
+            except FetchError as exc:
+                if exc.status_code != 404:
+                    raise
+                logger.info("%s: 404 at %s, stopping pagination", site_name, url)
+                exhausted_pages = True
+                break
+
         products = scrape_page(html, config)
         pages_fetched += 1
 

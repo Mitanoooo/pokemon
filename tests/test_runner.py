@@ -965,3 +965,78 @@ def test_run_site_source_urls_undercount_warning_names_the_url(conn, caplog):
     undercount = [r.getMessage() for r in caplog.records if "max_pages" in r.getMessage()]
     assert len(undercount) == 1
     assert "https://example.fi/a" in undercount[0]
+
+
+def test_run_site_404_on_later_page_ends_pagination_not_the_site(conn):
+    """A 404 past page 1 is how WooCommerce says "no more pages"."""
+    cfg = _paged_cfg(["https://example.fi/a"])
+
+    def fake_fetch(url, **kwargs):
+        if url.endswith("?page=2"):
+            raise FetchError("HTTP 404 for " + url, 404)
+        return url
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page", side_effect=lambda html, cfg_: _named_products("A1")), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 0
+    assert site["last_error"] is None
+    assert conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0] == 1
+
+
+def test_run_site_404_on_first_page_still_fails_the_url(conn):
+    """A 404 on the entry URL itself is a real error, not an end-of-listing."""
+    cfg = _paged_cfg(["https://example.fi/a"])
+
+    with patch("scraper.runner.fetch", side_effect=FetchError("HTTP 404 for https://example.fi/a", 404)), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 1
+    assert "404" in (site["last_error"] or "")
+
+
+def test_run_site_404_on_later_page_keeps_other_source_urls(conn):
+    """TCG-kauppa's regression: one short category must not void the whole site."""
+    cfg = _paged_cfg(["https://example.fi/a", "https://example.fi/b"])
+
+    def fake_fetch(url, **kwargs):
+        if url == "https://example.fi/a?page=2":
+            raise FetchError("HTTP 404 for " + url, 404)
+        return url
+
+    def fake_scrape(html, cfg_):
+        return _named_products("B1") if "/b" in html else _named_products("A1")
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page", side_effect=fake_scrape), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 0
+    names = sorted(r[0] for r in conn.execute("SELECT raw_name FROM price_readings"))
+    assert names == ["A1", "B1"]
+
+
+def test_run_site_non_404_error_on_later_page_still_fails(conn):
+    """A 500 mid-pagination is a real failure, not an end-of-listing signal."""
+    cfg = _paged_cfg(["https://example.fi/a"])
+
+    def fake_fetch(url, **kwargs):
+        if url.endswith("?page=2"):
+            raise FetchError("HTTP 500 for " + url, 500)
+        return url
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page", side_effect=lambda html, cfg_: _named_products("A1")), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 1
+    assert "500" in (site["last_error"] or "")
