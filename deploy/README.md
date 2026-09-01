@@ -53,7 +53,7 @@ ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 '
 '
 ```
 
-`init_db.py` is idempotent: `CREATE TABLE IF NOT EXISTS` handles the three new tables (`scrape_runs`, `listings`, `updates`) and `_add_column_if_missing` adds `price_readings.run_id` only if absent.
+`init_db.py` only creates missing tables and indexes, and refuses a database that predates the four-table refocus schema. Moving the live database to that schema is `scripts/rebuild_db.py`'s job — see the deploy note in [ticket 13](../.wayfinder/tickets/13-four-table-schema-rebuild.md).
 
 > **Gotcha — don't rename `app/views/` back to `app/pages/`.** Streamlit auto-detects any folder literally named `pages/` sibling to the entrypoint as its own multi-page-app router, which registers each page as a standalone top-level route bypassing `main.py`'s custom router (the thing that sets up `st.session_state["conn"]`). Doing so silently breaks every page with a "No database connection." error. The folder is intentionally named `app/views/` for this reason.
 
