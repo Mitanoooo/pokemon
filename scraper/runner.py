@@ -11,7 +11,7 @@ import sqlite3
 from scraper import db
 from scraper.fetcher import FetchError, fetch
 from scraper.paginator import is_paginated, paginate, source_urls
-from scraper.parser import scrape_page
+from scraper.parser import availability_forms, scrape_page
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def _build_update_events(
     run_id: int,
     products: list[dict],
     pre_state: dict,
-    stock_mode: Optional[str],
+    availability_mode: Optional[str],
 ) -> list[dict]:
     """Diff products seen this run against the pre-upsert state and return events."""
     # Last occurrence of each raw_name wins (handles multi-page duplicates)
@@ -73,7 +73,7 @@ def _build_update_events(
     events = []
     for raw_name, p in deduped.items():
         new_price = p.get("price")
-        new_in_stock = p.get("in_stock")
+        new_availability = p.get("availability")
         old = pre_state.get(raw_name)
 
         base = {
@@ -104,8 +104,11 @@ def _build_update_events(
                     "new_value": str(new_price),
                 })
 
-            if (stock_mode and stock_mode != "unknown"
-                    and old.get("availability") == "out_of_stock" and new_in_stock):
+            # A site with no availability block reads as all-unknown, so its
+            # every-run "unknown" must not look like a stock transition.
+            if (availability_mode
+                    and old.get("availability") == "out_of_stock"
+                    and new_availability == "in_stock"):
                 events.append({
                     **base,
                     "event_type": "back_in_stock",
@@ -182,7 +185,8 @@ def _scrape_source_url(
                 product_url=_absolute_url(source_url, p.get("product_url")),
                 price=p.get("price"),
                 currency=currency,
-                in_stock=p.get("in_stock"),
+                availability=p.get("availability", "unknown"),
+                availability_text=p.get("availability_text"),
                 run_id=run_id,
             )
 
@@ -223,7 +227,7 @@ def run_site(
     site_source_urls = source_urls(config)
     site_name = config.get("site_name", site_source_urls[0])
     site_id = _upsert_site(conn, config)
-    stock_mode = config.get("stock_mode")
+    availability_mode = availability_forms(config)
 
     owns_run = run_id is None
     if owns_run:
@@ -247,7 +251,7 @@ def run_site(
         # Generate and persist update events for all products seen this run.
         if all_products:
             events = _build_update_events(
-                site_id, run_id, all_products, pre_state, stock_mode
+                site_id, run_id, all_products, pre_state, availability_mode
             )
             if events:
                 db.write_updates(conn, events)
@@ -256,18 +260,21 @@ def run_site(
             msg = "0 products across all pages"
             logger.warning("%s: pages=%d products=0 — %s", site_name, pages_fetched, msg)
             db.update_site_health(conn, site_id, success=False, error_text=msg,
-                                  null_price_count=_null_price_count(all_products))
+                                  null_price_count=_null_price_count(all_products),
+                                  availability_mode=availability_mode)
             return
 
         db.update_site_health(conn, site_id, success=True,
-                              null_price_count=_null_price_count(all_products))
+                              null_price_count=_null_price_count(all_products),
+                              availability_mode=availability_mode)
         logger.info("%s: pages=%d products=%d", site_name, pages_fetched, priced)
 
     except Exception as exc:
         error_text = str(exc)
         logger.error("%s: error — %s", site_name, error_text)
         db.update_site_health(conn, site_id, success=False, error_text=error_text,
-                              null_price_count=_null_price_count(all_products))
+                              null_price_count=_null_price_count(all_products),
+                              availability_mode=availability_mode)
     finally:
         if owns_run:
             db.finish_run(conn, run_id)

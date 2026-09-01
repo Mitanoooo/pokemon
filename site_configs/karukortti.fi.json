@@ -9,12 +9,17 @@
     "https://karukortti.fi/category/japaninkieliset"
   ],
   "method": "css",
-  "stock_mode": "inverted",
+  "availability": {
+    "presence": {
+      "selector": ".product-sold-out-label",
+      "present": "out_of_stock",
+      "absent": "in_stock"
+    }
+  },
   "selectors": {
     "product_container": "a[data-selector=\"list-product-view\"]",
     "product_name": "[data-selector=\"os-theme-product-list-name\"]",
     "price": "[data-selector=\"os-theme-product-list-price-regular\"]",
-    "in_stock": ".product-sold-out-label",
     "product_url": null
   },
   "pagination": {

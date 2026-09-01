@@ -7,12 +7,17 @@
     "https://muksumassi.fi/kerailykortit/pokemon-tin-metalliboxit/"
   ],
   "method": "css",
-  "stock_mode": "container_class",
+  "availability": {
+    "container_class_map": {
+      "instock": "in_stock",
+      "outofstock": "out_of_stock",
+      "unavailable": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": "ul.products li.product",
     "product_name": "h5 a",
     "price": ".woocommerce-Price-amount",
-    "in_stock": "li.product.instock",
     "product_url": "h5 a"
   },
   "pagination": {

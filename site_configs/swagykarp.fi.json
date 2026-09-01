@@ -9,12 +9,17 @@
     "https://swagykarp.fi/product-category/pokemon-tcg/battle-deckit/"
   ],
   "method": "css",
-  "stock_mode": "container_class",
+  "availability": {
+    "container_class_map": {
+      "instock": "in_stock",
+      "outofstock": "out_of_stock",
+      "unavailable": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": "ul.products li.product",
     "product_name": ".woocommerce-loop-product__title, h2.woocommerce-loop-product__title",
     "price": "span.price",
-    "in_stock": "li.product.instock",
     "product_url": "a.woocommerce-LoopProduct-link, a[href*='/product/']"
   },
   "pagination": {

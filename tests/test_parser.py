@@ -1,98 +1,324 @@
-"""Tests for detect_stock and scrape_page."""
+"""Tests for detect_availability and scrape_page."""
 from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
-from scraper.parser import detect_stock, scrape_page
+from scraper.parser import availability_forms, detect_availability, scrape_page
 
-
-# ── detect_stock helpers ─────────────────────────────────────────────────────
 
 def make_el(html: str) -> BeautifulSoup:
     return BeautifulSoup(html, "html.parser").find()
 
 
-# ── normal mode ──────────────────────────────────────────────────────────────
+# ── text_map ──────────────────────────────────────────────────────────────────
 
-def test_detect_stock_normal_present():
-    el = make_el('<li class="product"><span class="in-stock"></span></li>')
-    assert detect_stock(el, {"stock_mode": "normal", "selectors": {"in_stock": ".in-stock"}}) is True
+BADGE_CFG = {
+    "availability": {
+        "selector": "span.badge",
+        "text_map": {
+            "Varastossa": "in_stock",
+            "Loppu": "out_of_stock",
+            "Ennakkotilaus": "preorder",
+        },
+        "default": "unknown",
+    }
+}
 
-def test_detect_stock_normal_absent():
+
+def test_text_map_in_stock():
+    el = make_el('<li><span class="badge">Varastossa</span></li>')
+    assert detect_availability(el, BADGE_CFG) == ("in_stock", "Varastossa")
+
+
+def test_text_map_out_of_stock():
+    el = make_el('<li><span class="badge">Loppu</span></li>')
+    assert detect_availability(el, BADGE_CFG) == ("out_of_stock", "Loppu")
+
+
+def test_text_map_matches_as_substring_so_a_trailing_date_still_resolves():
+    el = make_el('<li><span class="badge">Ennakkotilaus 12.9.2026</span></li>')
+    availability, text = detect_availability(el, BADGE_CFG)
+    assert availability == "preorder"
+    assert text == "Ennakkotilaus 12.9.2026"
+
+
+def test_text_map_is_case_and_whitespace_insensitive():
+    el = make_el('<li><span class="badge">  ENNAKKO\n   TILAUS  </span></li>')
+    cfg = {"availability": {"selector": "span.badge",
+                            "text_map": {"ennakko tilaus": "preorder"}}}
+    assert detect_availability(el, cfg)[0] == "preorder"
+
+
+def test_text_map_prefers_the_longest_matching_key():
+    """"Ei varastossa" must not resolve to in_stock via the shorter key."""
+    el = make_el('<li><span class="badge">Ei varastossa</span></li>')
+    cfg = {"availability": {"selector": "span.badge",
+                            "text_map": {"varastossa": "in_stock",
+                                         "ei varastossa": "out_of_stock"}}}
+    assert detect_availability(el, cfg)[0] == "out_of_stock"
+
+
+def test_text_map_checks_every_element_matching_the_selector():
+    """prisma.fi's selector is `p`, and the badge is one of several."""
+    el = make_el('<li><p>Tuotekuvaus</p><p>Ei saatavilla</p></li>')
+    cfg = {"availability": {"selector": "p",
+                            "text_map": {"Ei saatavilla": "out_of_stock"},
+                            "default": "in_stock"}}
+    assert detect_availability(el, cfg) == ("out_of_stock", "Ei saatavilla")
+
+
+def test_text_map_prefers_the_longest_key_across_elements_not_within_one():
+    """A shop printing two badges must not have document order beat key length.
+
+    "Varastossa" comes first in the DOM, but "Ennakkotilaus 12.9.2026" is the
+    longer key, so the item is a preorder rather than stock on the shelf.
+    """
+    el = make_el('<li><span class="badge">Varastossa</span>'
+                 '<span class="badge">Ennakkotilaus 12.9.2026</span></li>')
+    availability, text = detect_availability(el, BADGE_CFG)
+    assert availability == "preorder"
+    assert text == "Ennakkotilaus 12.9.2026"
+
+
+def test_text_map_no_match_falls_through_to_default():
+    el = make_el('<li><span class="badge">Uutuus</span></li>')
+    cfg = {"availability": {"selector": "span.badge",
+                            "text_map": {"Loppu": "out_of_stock"},
+                            "default": "in_stock"}}
+    assert detect_availability(el, cfg) == ("in_stock", None)
+
+
+def test_text_map_without_a_selector_reads_the_container_text():
+    el = make_el('<li>Loppuunmyyty</li>')
+    cfg = {"availability": {"text_map": {"loppuunmyyty": "out_of_stock"}}}
+    assert detect_availability(el, cfg) == ("out_of_stock", "Loppuunmyyty")
+
+
+# ── presence ──────────────────────────────────────────────────────────────────
+
+PRESENCE_CFG = {
+    "availability": {
+        "presence": {"selector": ".in-stock", "present": "in_stock",
+                     "absent": "out_of_stock"}
+    }
+}
+
+
+def test_presence_present_state():
+    el = make_el('<li><span class="in-stock">Varastossa</span></li>')
+    assert detect_availability(el, PRESENCE_CFG) == ("in_stock", "Varastossa")
+
+
+def test_presence_absent_state():
     el = make_el('<li class="product"></li>')
-    assert detect_stock(el, {"stock_mode": "normal", "selectors": {"in_stock": ".in-stock"}}) is False
+    assert detect_availability(el, PRESENCE_CFG) == ("out_of_stock", None)
 
 
-# ── inverted mode ────────────────────────────────────────────────────────────
-
-def test_detect_stock_inverted_selector_absent_means_in_stock():
-    el = make_el('<li class="product"></li>')
-    assert detect_stock(el, {"stock_mode": "inverted", "selectors": {"in_stock": ".label--subdued"}}) is True
-
-def test_detect_stock_inverted_selector_present_means_out_of_stock():
-    el = make_el('<li class="product"><span class="label--subdued"></span></li>')
-    assert detect_stock(el, {"stock_mode": "inverted", "selectors": {"in_stock": ".label--subdued"}}) is False
+def test_presence_states_can_be_swapped_for_a_sold_out_marker():
+    """The old `inverted` mode: the selector marks out of stock."""
+    cfg = {"availability": {"presence": {"selector": ".sold-out",
+                                         "present": "out_of_stock",
+                                         "absent": "in_stock"}}}
+    assert detect_availability(make_el('<li><i class="sold-out"></i></li>'), cfg)[0] == "out_of_stock"
+    assert detect_availability(make_el('<li></li>'), cfg)[0] == "in_stock"
 
 
-# ── badge_text mode ───────────────────────────────────────────────────────────
-
-def test_detect_stock_badge_text_sold_out():
-    el = make_el('<li><span class="badge">Sold out</span></li>')
-    cfg = {"stock_mode": "badge_text", "selectors": {"in_stock": ".badge"}, "stock_badge_text": "Sold out"}
-    assert detect_stock(el, cfg) is False
-
-def test_detect_stock_badge_text_loppunut():
-    el = make_el('<li><span class="product-badge-content">Loppunut</span></li>')
-    cfg = {"stock_mode": "badge_text", "selectors": {"in_stock": ".product-badge-content"}, "stock_badge_text": "Loppunut"}
-    assert detect_stock(el, cfg) is False
-
-def test_detect_stock_badge_text_absent_means_in_stock():
-    el = make_el('<li></li>')
-    cfg = {"stock_mode": "badge_text", "selectors": {"in_stock": ".badge"}, "stock_badge_text": "Sold out"}
-    assert detect_stock(el, cfg) is True
-
-def test_detect_stock_badge_text_different_text_means_in_stock():
-    # badge exists but says "New" not "Sold out" → still in stock
-    el = make_el('<li><span class="badge">New</span></li>')
-    cfg = {"stock_mode": "badge_text", "selectors": {"in_stock": ".badge"}, "stock_badge_text": "Sold out"}
-    assert detect_stock(el, cfg) is True
+def test_presence_uses_its_own_selector_not_the_block_selector():
+    el = make_el('<li><span class="badge">Uutuus</span><b class="cart">Osta</b></li>')
+    cfg = {"availability": {"selector": "span.badge",
+                            "presence": {"selector": "b.cart", "present": "in_stock",
+                                         "absent": "out_of_stock"}}}
+    assert detect_availability(el, cfg) == ("in_stock", "Osta")
 
 
-# ── container_class mode ──────────────────────────────────────────────────────
+def test_presence_falls_through_when_the_matching_state_is_not_configured():
+    """A presence block with only `present` must not swallow the absent case."""
+    cfg = {"availability": {"presence": {"selector": ".in-stock", "present": "in_stock"},
+                            "default": "unknown"}}
+    assert detect_availability(make_el('<li></li>'), cfg) == ("unknown", None)
 
-def test_detect_stock_container_class_instock():
+
+# ── container_class_map ───────────────────────────────────────────────────────
+
+CLASS_CFG = {
+    "availability": {
+        "container_class_map": {"instock": "in_stock", "outofstock": "out_of_stock",
+                                "unavailable": "out_of_stock"}
+    }
+}
+
+
+def test_container_class_map_instock():
     el = make_el('<li class="product instock">')
-    assert detect_stock(el, {"stock_mode": "container_class"}) is True
+    assert detect_availability(el, CLASS_CFG) == ("in_stock", "product instock")
 
-def test_detect_stock_container_class_outofstock():
+
+def test_container_class_map_outofstock():
     el = make_el('<li class="product outofstock">')
-    assert detect_stock(el, {"stock_mode": "container_class"}) is False
+    assert detect_availability(el, CLASS_CFG) == ("out_of_stock", "product outofstock")
 
-def test_detect_stock_container_class_unavailable():
-    # pbcards.fi uses "unavailable"
+
+def test_container_class_map_unavailable():
     el = make_el('<li class="product-card unavailable">')
-    assert detect_stock(el, {"stock_mode": "container_class"}) is False
+    assert detect_availability(el, CLASS_CFG)[0] == "out_of_stock"
 
 
-# ── attribute mode (karkkainen.com) ──────────────────────────────────────────
-
-def test_detect_stock_attribute_instock():
-    el = make_el('<div data-testid="product-card-container"><span class="lipscore-rating-small" data-ls-availability="InStock"></span></div>')
-    assert detect_stock(el, {"stock_mode": "attribute", "selectors": {"in_stock": ".lipscore-rating-small"}}) is True
-
-def test_detect_stock_attribute_outofstock():
-    el = make_el('<div data-testid="product-card-container"><span class="lipscore-rating-small" data-ls-availability="OutOfStock"></span></div>')
-    assert detect_stock(el, {"stock_mode": "attribute", "selectors": {"in_stock": ".lipscore-rating-small"}}) is False
-
-
-# ── unknown / null mode ───────────────────────────────────────────────────────
-
-def test_detect_stock_null_returns_none():
+def test_container_class_map_no_matching_class_falls_through_to_default():
     el = make_el('<li class="product">')
-    assert detect_stock(el, {"stock_mode": None}) is None
+    assert detect_availability(el, CLASS_CFG) == ("unknown", None)
 
-def test_detect_stock_unknown_returns_none():
-    el = make_el('<li class="product">')
-    assert detect_stock(el, {"stock_mode": "unknown"}) is None
+
+# ── attribute ─────────────────────────────────────────────────────────────────
+
+ATTR_CFG = {
+    "availability": {
+        "selector": ".lipscore-rating-small",
+        "attribute": {"name": "data-ls-availability",
+                      "map": {"InStock": "in_stock", "OutOfStock": "out_of_stock",
+                              "PreOrder": "preorder"}},
+    }
+}
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("InStock", "in_stock"),
+    ("OutOfStock", "out_of_stock"),
+    ("PreOrder", "preorder"),
+])
+def test_attribute_maps_its_values(value, expected):
+    el = make_el(f'<div><span class="lipscore-rating-small" data-ls-availability="{value}"></span></div>')
+    assert detect_availability(el, ATTR_CFG) == (expected, value)
+
+
+def test_attribute_value_outside_the_map_falls_through_to_default():
+    el = make_el('<div><span class="lipscore-rating-small" data-ls-availability="Backorder"></span></div>')
+    assert detect_availability(el, ATTR_CFG) == ("unknown", None)
+
+
+def test_attribute_reads_the_container_when_the_block_has_no_selector():
+    el = make_el('<li data-stock="OutOfStock"></li>')
+    cfg = {"availability": {"attribute": {"name": "data-stock",
+                                          "map": {"OutOfStock": "out_of_stock"}}}}
+    assert detect_availability(el, cfg) == ("out_of_stock", "OutOfStock")
+
+
+# ── precedence ────────────────────────────────────────────────────────────────
+
+def test_text_map_beats_container_class_map():
+    el = make_el('<li class="product instock"><span class="badge">Loppu</span></li>')
+    cfg = {"availability": {
+        "selector": "span.badge",
+        "text_map": {"Loppu": "out_of_stock"},
+        "container_class_map": {"instock": "in_stock"},
+    }}
+    assert detect_availability(el, cfg) == ("out_of_stock", "Loppu")
+
+
+def test_presence_beats_container_class_map():
+    el = make_el('<li class="product outofstock"><b class="cart">Osta</b></li>')
+    cfg = {"availability": {
+        "presence": {"selector": "b.cart", "present": "in_stock", "absent": "out_of_stock"},
+        "container_class_map": {"outofstock": "out_of_stock"},
+    }}
+    assert detect_availability(el, cfg)[0] == "in_stock"
+
+
+def test_container_class_map_beats_attribute():
+    el = make_el('<li class="product instock" data-stock="OutOfStock"></li>')
+    cfg = {"availability": {
+        "container_class_map": {"instock": "in_stock"},
+        "attribute": {"name": "data-stock", "map": {"OutOfStock": "out_of_stock"}},
+    }}
+    assert detect_availability(el, cfg)[0] == "in_stock"
+
+
+def test_preorder_url_loses_to_a_real_badge():
+    """A shop's preorder page can still list an item as sold out."""
+    el = make_el('<li><span class="badge">Loppu</span></li>')
+    availability, text = detect_availability(el, BADGE_CFG, from_preorder_url=True)
+    assert (availability, text) == ("out_of_stock", "Loppu")
+
+
+def test_preorder_url_wins_over_default():
+    el = make_el('<li><span class="badge">Uutuus</span></li>')
+    cfg = {"availability": {"selector": "span.badge",
+                            "text_map": {"Loppu": "out_of_stock"},
+                            "default": "in_stock"}}
+    assert detect_availability(el, cfg, from_preorder_url=True) == ("preorder", "(preorder url)")
+
+
+# ── no block, defaults, text cap ──────────────────────────────────────────────
+
+def test_no_availability_block_is_unknown():
+    el = make_el('<li class="product instock"><span class="badge">Varastossa</span></li>')
+    assert detect_availability(el, {}) == ("unknown", None)
+
+
+def test_no_availability_block_ignores_the_preorder_url_flag():
+    """A site with no block reports untracked, not preorder-everything."""
+    assert detect_availability(make_el('<li>'), {}, from_preorder_url=True) == ("unknown", None)
+
+
+def test_default_defaults_to_unknown():
+    el = make_el('<li><span class="badge">Uutuus</span></li>')
+    cfg = {"availability": {"selector": "span.badge", "text_map": {"Loppu": "out_of_stock"}}}
+    assert detect_availability(el, cfg) == ("unknown", None)
+
+
+def test_availability_text_is_capped_at_120_chars():
+    badge = "Ennakkotilaus " + "x" * 200
+    el = make_el(f'<li><span class="badge">{badge}</span></li>')
+    _, text = detect_availability(el, BADGE_CFG)
+    assert len(text) == 120
+    assert text == badge[:120]
+
+
+# ── config states outside the allowed set ─────────────────────────────────────
+
+BAD_STATE_CASES = [
+    ({"selector": "span.badge", "text_map": {"Varastossa": "instock"}},
+     '<li><span class="badge">Varastossa</span></li>'),
+    ({"presence": {"selector": ".in-stock", "present": "in stock"}},
+     '<li><span class="in-stock">Varastossa</span></li>'),
+    ({"container_class_map": {"instock": "IN_STOCK"}},
+     '<li class="product instock"></li>'),
+    ({"attribute": {"name": "data-a", "map": {"InStock": "available"}}},
+     '<li data-a="InStock"></li>'),
+    ({"default": "in-stock"}, '<li></li>'),
+]
+
+
+@pytest.mark.parametrize("block,html", BAD_STATE_CASES)
+def test_a_state_outside_the_allowed_set_reads_as_unknown(block, html, caplog):
+    """A config typo must cost one listing, not the whole site.
+
+    The state goes into a column with a CHECK constraint, so passing it through
+    would raise on insert and run_site would log a site-wide failure.
+    """
+    cfg = {"site_name": "Testishop", "availability": block}
+    with caplog.at_level("WARNING"):
+        availability, _ = detect_availability(make_el(html), cfg)
+    assert availability == "unknown"
+    assert "Testishop" in caplog.text
+
+
+# ── availability_forms (written to sites.availability_mode) ───────────────────
+
+def test_availability_forms_lists_configured_forms_in_precedence_order():
+    cfg = {"availability": {
+        "attribute": {"name": "x", "map": {}},
+        "text_map": {"a": "in_stock"},
+        "container_class_map": {"instock": "in_stock"},
+    }}
+    assert availability_forms(cfg) == "text_map,container_class_map,attribute"
+
+
+def test_availability_forms_is_none_without_a_block():
+    assert availability_forms({}) is None
+
+
+def test_availability_forms_is_none_when_the_block_configures_no_form():
+    """A block that only sets a default tracks nothing, so it reads as untracked."""
+    assert availability_forms({"availability": {"default": "unknown"}}) is None
 
 
 # ── scrape_page: tcgkauppa.fi (WooCommerce container-class) ─────────────────
@@ -100,12 +326,14 @@ def test_detect_stock_unknown_returns_none():
 TCGKAUPPA_CFG = {
     "site_name": "TCG-kauppa",
     "currency": "EUR",
-    "stock_mode": "container_class",
+    "availability": {
+        "container_class_map": {"instock": "in_stock", "outofstock": "out_of_stock",
+                               "unavailable": "out_of_stock"},
+    },
     "selectors": {
         "product_container": "li.product",
         "product_name": "h3.product-title a",
         "price": "span.price",
-        "in_stock": ".instock",
         "product_url": "h3.product-title a",
     },
 }
@@ -123,13 +351,14 @@ def test_scrape_page_tcgkauppa_has_names_and_prices():
     # All products should have a float price or None (suspicious price guard)
     assert all(isinstance(p["price"], float) or p["price"] is None for p in products)
 
-def test_scrape_page_tcgkauppa_stock_detection():
+def test_scrape_page_tcgkauppa_availability_from_container_class():
     html = Path("tests/fixtures/tcgkauppa.fi/page1.html").read_text()
     products = scrape_page(html, TCGKAUPPA_CFG)
-    in_stock = [p for p in products if p["in_stock"] is True]
-    out_stock = [p for p in products if p["in_stock"] is False]
+    in_stock = [p for p in products if p["availability"] == "in_stock"]
+    out_stock = [p for p in products if p["availability"] == "out_of_stock"]
     assert len(in_stock) == 6
     assert len(out_stock) == 42
+    assert all("instock" in p["availability_text"] for p in in_stock)
 
 def test_scrape_page_tcgkauppa_currency():
     html = Path("tests/fixtures/tcgkauppa.fi/page1.html").read_text()
@@ -142,14 +371,16 @@ def test_scrape_page_tcgkauppa_currency():
 PELIPARATIISI_CFG = {
     "site_name": "Peliparatiisi",
     "currency": "EUR",
-    "stock_mode": "badge_text",
-    "stock_badge_text": "Sold out",
+    "availability": {
+        "selector": ".badge",
+        "text_map": {"Sold out": "out_of_stock"},
+        "default": "in_stock",
+    },
     "selectors": {
         "product_container": "li.grid__item",
         "product_name": "h3.card__heading.h5 a",
         "price": ".price-item--sale",
         "price_fallback": ".price-item--regular",
-        "in_stock": ".badge",
         "product_url": "h3.card__heading.h5 a",
     },
 }
@@ -166,13 +397,16 @@ def test_scrape_page_peliparatiisi_no_duplicate_names():
     names = [p["raw_name"] for p in products]
     assert len(names) == len(set(names)), "Duplicate product names found"
 
-def test_scrape_page_peliparatiisi_stock_detection():
+def test_scrape_page_peliparatiisi_availability_from_badge_text():
     html = Path("tests/fixtures/peliparatiisi.net/page1.html").read_text()
     products = scrape_page(html, PELIPARATIISI_CFG)
-    sold_out = [p for p in products if p["in_stock"] is False]
-    in_stock = [p for p in products if p["in_stock"] is True]
+    sold_out = [p for p in products if p["availability"] == "out_of_stock"]
+    in_stock = [p for p in products if p["availability"] == "in_stock"]
     assert len(sold_out) == 12
     assert len(in_stock) == 4
+    assert sold_out[0]["availability_text"] == "Sold out"
+    # The in-stock reading comes from the default, so there is no badge text.
+    assert in_stock[0]["availability_text"] is None
 
 def test_scrape_page_peliparatiisi_price_is_comma_decimal():
     """Prices from fixture must be comma-decimal values (e.g. 39.9 not 3990.0)."""
@@ -187,12 +421,16 @@ def test_scrape_page_peliparatiisi_price_is_comma_decimal():
 KARKKAINEN_CFG = {
     "site_name": "Karkkainen.com verkkokauppa",
     "currency": "EUR",
-    "stock_mode": "attribute",
+    "availability": {
+        "selector": ".lipscore-rating-small",
+        "attribute": {"name": "data-ls-availability",
+                      "map": {"InStock": "in_stock", "OutOfStock": "out_of_stock",
+                              "PreOrder": "preorder"}},
+    },
     "selectors": {
         "product_container": '[data-testid="product-card-container"]',
         "product_name": '[data-testid="product-card-name-link"] p',
         "price": ".lipscore-rating-small",
-        "in_stock": ".lipscore-rating-small",
         "product_url": '[data-testid="product-card-name-link"]',
     },
 }
@@ -230,7 +468,8 @@ def test_scrape_page_karkkainen_reads_attribute_stock():
     html = Path("tests/fixtures/karkkainen.com/page1.html").read_text()
     products = scrape_page(html, KARKKAINEN_CFG)
     # All sampled items were OutOfStock in the fixture
-    assert all(p["in_stock"] is False for p in products)
+    assert all(p["availability"] == "out_of_stock" for p in products)
+    assert all(p["availability_text"] == "OutOfStock" for p in products)
 
 
 # ── scrape_page: poromagia.com (product_line only, no product_pod) ───────────
@@ -238,12 +477,14 @@ def test_scrape_page_karkkainen_reads_attribute_stock():
 POROMAGIA_CFG = {
     "site_name": "Poromagia",
     "currency": "EUR",
-    "stock_mode": "normal",
+    "availability": {
+        "presence": {"selector": ".instock.availability", "present": "in_stock",
+                     "absent": "out_of_stock"},
+    },
     "selectors": {
         "product_container": "article.product_line",
         "product_name": "h3 a",
         "price": ".price_color",
-        "in_stock": ".instock.availability",
         "product_url": "h3 a",
     },
 }
@@ -266,14 +507,16 @@ def test_scrape_page_poromagia_names_and_prices():
 PRISMA_CFG = {
     "site_name": "Prisma.fi",
     "currency": "EUR",
-    "stock_mode": "badge_text",
-    "stock_badge_text": "Ei saatavilla",
+    "availability": {
+        "selector": "p",
+        "text_map": {"Ei saatavilla": "out_of_stock"},
+        "default": "in_stock",
+    },
     "container_scope": "ul[data-test-id='brand-product-list']",
     "selectors": {
         "product_container": "li",
         "product_name": "a[data-test-id='product-card-link']",
         "price": "[data-test-id='product-card-price']",
-        "in_stock": "p",
         "product_url": "a[data-test-id='product-card-link']",
     },
 }
@@ -286,7 +529,7 @@ def test_scrape_page_prisma_product_count():
 def test_scrape_page_prisma_stock_ei_saatavilla():
     html = Path("tests/fixtures/prisma.fi/page1.html").read_text()
     products = scrape_page(html, PRISMA_CFG)
-    out_of_stock = [p for p in products if p["in_stock"] is False]
+    out_of_stock = [p for p in products if p["availability"] == "out_of_stock"]
     assert len(out_of_stock) == 4
 
 
@@ -295,14 +538,16 @@ def test_scrape_page_prisma_stock_ei_saatavilla():
 SPELPARKEN_CFG = {
     "site_name": "Spelparken",
     "currency": "SEK",
-    "stock_mode": "badge_text",
-    "stock_badge_text": "Slutsåld",
+    "availability": {
+        "selector": ".card__badge .badge",
+        "text_map": {"Slutsåld": "out_of_stock"},
+        "default": "in_stock",
+    },
     "selectors": {
         "product_container": "li.grid__item",
         "product_name": "h3.card__heading a",
         "price": ".price-item--sale",
         "price_fallback": ".price-item--regular",
-        "in_stock": ".card__badge .badge",
         "product_url": "h3.card__heading a",
     },
 }
@@ -328,9 +573,10 @@ def test_scrape_page_spelparken_sold_out_detection():
     """Product with 'Slutsåld' badge should be out of stock."""
     html = Path("tests/fixtures/spelparken.se/page1.html").read_text()
     products = scrape_page(html, SPELPARKEN_CFG)
-    sold_out = [p for p in products if p["in_stock"] is False]
+    sold_out = [p for p in products if p["availability"] == "out_of_stock"]
     assert len(sold_out) == 1
     assert "Obsidian" in sold_out[0]["raw_name"]
+    assert sold_out[0]["availability_text"] == "Slutsåld"
 
 
 def test_scrape_page_spelparken_nyhet_badge_is_in_stock():
@@ -338,7 +584,7 @@ def test_scrape_page_spelparken_nyhet_badge_is_in_stock():
     html = Path("tests/fixtures/spelparken.se/page1.html").read_text()
     products = scrape_page(html, SPELPARKEN_CFG)
     nyhet = next(p for p in products if "Twilight" in p["raw_name"])
-    assert nyhet["in_stock"] is True
+    assert nyhet["availability"] == "in_stock"
 
 
 def test_scrape_page_spelparken_currency_is_sek():
@@ -353,11 +599,14 @@ def test_scrape_page_spelparken_currency_is_sek():
 # container itself is the <a>.
 KARUKORTTI_CFG = {
     "site_name": "KaruKortti",
+    "availability": {
+        "presence": {"selector": ".product-sold-out-label",
+                     "present": "out_of_stock", "absent": "in_stock"},
+    },
     "selectors": {
         "product_container": 'a[data-selector="list-product-view"]',
         "product_name": '[data-selector="os-theme-product-list-name"]',
         "price": '[data-selector="os-theme-product-list-price-regular"]',
-        "in_stock": ".product-sold-out-label",
         "product_url": None,
     },
 }

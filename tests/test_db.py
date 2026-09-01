@@ -54,6 +54,27 @@ def test_update_site_health_persists_null_price_count(conn, site_id):
     assert row["null_price_count"] == 3
 
 
+def test_update_site_health_records_the_availability_mode(conn, site_id):
+    db.update_site_health(conn, site_id, success=True, availability_mode="text_map,presence")
+    row = conn.execute("SELECT availability_mode FROM sites WHERE id=?", (site_id,)).fetchone()
+    assert row["availability_mode"] == "text_map,presence"
+
+
+def test_update_site_health_availability_mode_is_null_for_an_untracked_site(conn, site_id):
+    db.update_site_health(conn, site_id, success=True, availability_mode="presence")
+    db.update_site_health(conn, site_id, success=True, availability_mode=None)
+    row = conn.execute("SELECT availability_mode FROM sites WHERE id=?", (site_id,)).fetchone()
+    assert row["availability_mode"] is None
+
+
+def test_update_site_health_records_the_availability_mode_on_a_failed_run(conn, site_id):
+    """The mode describes the config, so a broken site still reports what it tracks."""
+    db.update_site_health(conn, site_id, success=False, error_text="boom",
+                         availability_mode="presence")
+    row = conn.execute("SELECT availability_mode FROM sites WHERE id=?", (site_id,)).fetchone()
+    assert row["availability_mode"] == "presence"
+
+
 def test_update_site_health_null_price_count_zero_on_clean_run(conn, site_id):
     db.update_site_health(conn, site_id, success=True, null_price_count=5)
     db.update_site_health(conn, site_id, success=True, null_price_count=0)
@@ -90,7 +111,7 @@ def test_upsert_listing_new_pair_sets_first_seen_equal_to_last_seen(conn, site_i
     db.upsert_listing(
         conn, site_id, "Prismatic Evolutions ETB",
         product_url="https://example.fi/p/prismatic",
-        price=54.90, currency="EUR", in_stock=True, run_id=run_id,
+        price=54.90, currency="EUR", availability="in_stock", run_id=run_id,
     )
 
     row = conn.execute("SELECT * FROM listings").fetchone()
@@ -105,7 +126,7 @@ def test_upsert_listing_new_pair_sets_first_seen_equal_to_last_seen(conn, site_i
 def test_upsert_listing_known_pair_updates_last_seen_not_first_seen(conn, site_id):
     first_run = db.start_run(conn)
     db.upsert_listing(conn, site_id, "Booster Box", "https://example.fi/p/1",
-                      99.90, "EUR", True, first_run)
+                      99.90, "EUR", "in_stock", run_id=first_run)
 
     # Backdate both timestamps so "first_seen_at unchanged, last_seen_at moved"
     # is observable — _now() has second resolution and both upserts land in the
@@ -115,7 +136,7 @@ def test_upsert_listing_known_pair_updates_last_seen_not_first_seen(conn, site_i
 
     second_run = db.start_run(conn)
     db.upsert_listing(conn, site_id, "Booster Box", "https://example.fi/p/1",
-                      89.90, "EUR", True, second_run)
+                      89.90, "EUR", "in_stock", run_id=second_run)
 
     row = conn.execute("SELECT * FROM listings").fetchone()
     assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 1
@@ -128,7 +149,7 @@ def test_upsert_listing_known_pair_updates_last_seen_not_first_seen(conn, site_i
 def test_upsert_listing_with_null_price_stores_null_latest_price(conn, site_id):
     run_id = db.start_run(conn)
     db.upsert_listing(conn, site_id, "Single Card", "https://example.fi/p/card",
-                      None, "EUR", None, run_id)
+                      None, "EUR", "unknown", run_id=run_id)
 
     row = conn.execute("SELECT * FROM listings").fetchone()
     assert row["latest_price"] is None
@@ -138,9 +159,9 @@ def test_upsert_listing_with_null_price_stores_null_latest_price(conn, site_id):
 def test_upsert_listing_null_price_does_not_erase_known_price(conn, site_id):
     run_id = db.start_run(conn)
     db.upsert_listing(conn, site_id, "Booster Box", "https://example.fi/p/1",
-                      99.90, "EUR", True, run_id)
+                      99.90, "EUR", "in_stock", run_id=run_id)
     db.upsert_listing(conn, site_id, "Booster Box", "https://example.fi/p/1",
-                      None, "EUR", True, run_id)
+                      None, "EUR", "in_stock", run_id=run_id)
 
     row = conn.execute("SELECT latest_price FROM listings").fetchone()
     assert row["latest_price"] == 99.90
@@ -149,8 +170,8 @@ def test_upsert_listing_null_price_does_not_erase_known_price(conn, site_id):
 def test_upsert_listing_empty_url_does_not_erase_known_url(conn, site_id):
     run_id = db.start_run(conn)
     db.upsert_listing(conn, site_id, "Booster Box", "https://example.fi/p/1",
-                      99.90, "EUR", True, run_id)
-    db.upsert_listing(conn, site_id, "Booster Box", "", 99.90, "EUR", True, run_id)
+                      99.90, "EUR", "in_stock", run_id=run_id)
+    db.upsert_listing(conn, site_id, "Booster Box", "", 99.90, "EUR", "in_stock", run_id=run_id)
 
     row = conn.execute("SELECT product_url FROM listings").fetchone()
     assert row["product_url"] == "https://example.fi/p/1"
@@ -160,8 +181,8 @@ def test_upsert_listing_availability_is_overwritten_not_coalesced(conn, site_id)
     """availability means "state as of the last sighting", so a later unknown
     replaces a known state rather than being COALESCEd away."""
     run_id = db.start_run(conn)
-    db.upsert_listing(conn, site_id, "Booster Box", "", 99.90, "EUR", True, run_id)
-    db.upsert_listing(conn, site_id, "Booster Box", "", 99.90, "EUR", None, run_id)
+    db.upsert_listing(conn, site_id, "Booster Box", "", 99.90, "EUR", "in_stock", run_id=run_id)
+    db.upsert_listing(conn, site_id, "Booster Box", "", 99.90, "EUR", "unknown", run_id=run_id)
 
     row = conn.execute("SELECT availability FROM listings").fetchone()
     assert row["availability"] == "unknown"
@@ -169,18 +190,48 @@ def test_upsert_listing_availability_is_overwritten_not_coalesced(conn, site_id)
 
 def test_upsert_listing_out_of_stock_sighting_stored_as_out_of_stock(conn, site_id):
     run_id = db.start_run(conn)
-    db.upsert_listing(conn, site_id, "Booster Box", "", 99.90, "EUR", False, run_id)
+    db.upsert_listing(conn, site_id, "Booster Box", "", 99.90, "EUR", "out_of_stock", run_id=run_id)
 
     row = conn.execute("SELECT availability FROM listings").fetchone()
     assert row["availability"] == "out_of_stock"
+
+
+def test_upsert_listing_stores_the_availability_text(conn, site_id):
+    run_id = db.start_run(conn)
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR", "preorder",
+                      "Ennakkotilaus 12.9.2026", run_id=run_id)
+
+    row = conn.execute("SELECT availability, availability_text FROM listings").fetchone()
+    assert row["availability"] == "preorder"
+    assert row["availability_text"] == "Ennakkotilaus 12.9.2026"
+
+
+def test_upsert_listing_availability_text_is_replaced_with_the_state(conn, site_id):
+    """A text left over from an older badge would not explain the new state."""
+    run_id = db.start_run(conn)
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR", "preorder",
+                      "Ennakkotilaus 12.9.2026", run_id=run_id)
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR", "in_stock",
+                      None, run_id=run_id)
+
+    row = conn.execute("SELECT availability, availability_text FROM listings").fetchone()
+    assert row["availability"] == "in_stock"
+    assert row["availability_text"] is None
+
+
+def test_upsert_listing_defaults_to_unknown_availability(conn, site_id):
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR")
+
+    row = conn.execute("SELECT availability FROM listings").fetchone()
+    assert row["availability"] == "unknown"
 
 
 # ── get_listing_state ─────────────────────────────────────────────────────────
 
 def test_get_listing_state_returns_rows_keyed_by_raw_name(conn, site_id):
     run_id = db.start_run(conn)
-    db.upsert_listing(conn, site_id, "Box A", "https://example.fi/a", 10.0, "EUR", True, run_id)
-    db.upsert_listing(conn, site_id, "Box B", "https://example.fi/b", 20.0, "EUR", False, run_id)
+    db.upsert_listing(conn, site_id, "Box A", "https://example.fi/a", 10.0, "EUR", "in_stock", run_id=run_id)
+    db.upsert_listing(conn, site_id, "Box B", "https://example.fi/b", 20.0, "EUR", "out_of_stock", run_id=run_id)
 
     state = db.get_listing_state(conn, site_id)
     assert set(state) == {"Box A", "Box B"}
@@ -198,8 +249,8 @@ def test_get_listing_state_excludes_other_sites(conn, site_id):
     conn.commit()
 
     run_id = db.start_run(conn)
-    db.upsert_listing(conn, site_id, "Mine", "", 10.0, "EUR", True, run_id)
-    db.upsert_listing(conn, other_id, "Theirs", "", 20.0, "EUR", True, run_id)
+    db.upsert_listing(conn, site_id, "Mine", "", 10.0, "EUR", "in_stock", run_id=run_id)
+    db.upsert_listing(conn, other_id, "Theirs", "", 20.0, "EUR", "in_stock", run_id=run_id)
 
     assert set(db.get_listing_state(conn, site_id)) == {"Mine"}
 
@@ -275,6 +326,25 @@ def test_get_updates_caps_at_the_limit_keeping_the_newest(conn, site_id):
             "INSERT INTO updates (run_id, site_id, raw_name, event_type, created_at) "
             f"VALUES (?, ?, 'Box {day}', 'new_listing', '2020-01-0{day} 00:00:00')",
             (run_id, site_id),
+        )
+    conn.commit()
+
+    results = db.get_updates(conn, limit=2)
+    assert [r["raw_name"] for r in results] == ["Box 5", "Box 4"]
+
+
+def test_get_updates_breaks_a_same_second_tie_by_id(conn, site_id):
+    """One run writes its whole batch in the same second, so the cap needs id.
+
+    Without the tiebreaker, which rows survive `limit` is up to SQLite and the
+    rest stay unreachable until the 30-day prune.
+    """
+    run_id = db.start_run(conn)
+    for n in range(1, 6):
+        conn.execute(
+            "INSERT INTO updates (run_id, site_id, raw_name, event_type, created_at) "
+            "VALUES (?, ?, ?, 'new_listing', '2020-01-01 00:00:00')",
+            (run_id, site_id, f"Box {n}"),
         )
     conn.commit()
 

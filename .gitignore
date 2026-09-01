@@ -5,3 +5,7 @@ venv/
 .env
 *.db
 logs/
+
+# Mapping-era batch output. The pipeline that produced these is gone (ticket
+# 14); the leftovers in the repo root must not come back in a `git add -A`.
+batch_*.csv

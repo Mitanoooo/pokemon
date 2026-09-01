@@ -6,12 +6,17 @@
     "https://www.xn--kerilykortti-icb.fi/pokemon-boosterit/"
   ],
   "method": "css",
-  "stock_mode": "container_class",
+  "availability": {
+    "container_class_map": {
+      "instock": "in_stock",
+      "outofstock": "out_of_stock",
+      "unavailable": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": "ul.products li.product",
     "product_name": "h2.woocommerce-loop-product__title",
     "price": "span.price",
-    "in_stock": "li.product.instock",
     "product_url": "a.woocommerce-LoopProduct-link, h2.woocommerce-loop-product__title a"
   },
   "pagination": {

@@ -2,13 +2,18 @@
   "site_name": "Karkkainen.com verkkokauppa",
   "source_url": "https://www.karkkainen.com/verkkokauppa/kerailykortit",
   "method": "css",
-  "stock_mode": "normal",
+  "availability": {
+    "presence": {
+      "selector": ".lipscore-rating-small[data-ls-availability=\"InStock\"]",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "decimal_separator": "dot",
   "selectors": {
     "product_container": "[data-testid=\"product-card-container\"]",
     "product_name": "[data-testid=\"product-card-name-link\"] p",
     "price": ".lipscore-rating-small",
-    "in_stock": ".lipscore-rating-small[data-ls-availability=\"InStock\"]",
     "product_url": "[data-testid=\"product-card-name-link\"]"
   },
   "pagination": {

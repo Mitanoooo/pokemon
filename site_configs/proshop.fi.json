@@ -2,12 +2,17 @@
   "site_name": "Proshop",
   "source_url": "https://www.proshop.fi/Pokemon?f~pokmon_type=kort-og-tilbehor&pre=0",
   "method": "css",
-  "stock_mode": "normal",
+  "availability": {
+    "presence": {
+      "selector": ".site-icon-stock-in",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": "li.site-productlist-item",
     "product_name": "h2[product-display-name]",
     "price": ".site-currency-lg",
-    "in_stock": ".site-icon-stock-in",
     "product_url": "a.site-product-link"
   },
   "pagination": {

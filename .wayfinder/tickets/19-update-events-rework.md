@@ -16,6 +16,14 @@ Rework `_build_update_events` in `scraper/runner.py` for the four signals the op
 
 Retention stays at 30 days via `prune_updates`.
 
+**Also fix here: a mid-run fetch failure drops that run's events for good.**
+`_scrape_source_url` commits its listings per page, but `_build_update_events` runs after
+every source URL, inside the same `try`. A 500 on the last page therefore keeps the already
+committed listings and writes no events, and the next run diffs against those updated rows,
+so the price drop or restock in between is never reported. Build and write the events for the
+source URLs that did succeed, or roll the listing writes back with them. Test: a two-URL site
+whose second URL raises still emits the first URL's events.
+
 **Tests** (`tests/test_runner.py`, per the spec's testing decisions): first run silent but listings upserted; second run emits `new_listing`; preorder first sighting emits `new_preorder` only; `in_stock` → `preorder` emits `new_preorder`; both restock transitions emit `back_in_stock` with the old state in `old_value`; lower price → `price_drop`, higher → `price_rise`, equal → nothing; `unknown` on either side of a transition emits nothing; a preorder-URL sighting sets `from_preorder_url` on the listing.
 
 **Status: OPEN**

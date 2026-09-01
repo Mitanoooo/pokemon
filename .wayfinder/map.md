@@ -25,11 +25,10 @@ State at the start of this initiative: 2,738 distinct raw names, 450 of them unm
 
 ## Open tickets (frontier → blocked)
 
-- [15 — Availability config shape and parser](tickets/15-availability-config-and-parser.md) *(frontier)*
-- [16 — Availability probe CLI](tickets/16-availability-probe-cli.md) — blocked by 15
-- [17 — Preorder URL audit across all 40 sites](tickets/17-preorder-url-audit.md) — blocked by 15
+- [16 — Availability probe CLI](tickets/16-availability-probe-cli.md) *(frontier)*
+- [17 — Preorder URL audit across all 40 sites](tickets/17-preorder-url-audit.md) *(frontier)*
+- [19 — Update events rework](tickets/19-update-events-rework.md) *(frontier)*
 - [18 — Availability pin-down pass across all 40 sites](tickets/18-availability-pin-down-pass.md) — blocked by 16
-- [19 — Update events rework](tickets/19-update-events-rework.md) — blocked by 15
 - [20 — App: Updates, By site, Search](tickets/20-app-updates-sites-search.md) — blocked by 19
 
 Tickets 17 and 18 are the ones that make preorder and restock detection real; the rest is scaffolding around them. Both are per-site audit passes and cannot be fully automated.
@@ -38,6 +37,7 @@ Tickets 17 and 18 are the ones that make preorder and restock detection real; th
 
 - [13 — Four-table schema and DB rebuild script](tickets/13-four-table-schema-rebuild.md) — `schema.sql` is the four tables plus four indexes; `scripts/rebuild_db.py` builds the new DB from the old one. Not deployed yet: it ships with 14.
 - [14 — Strip mapping, products, thresholds and email](tickets/14-strip-mapping-products-thresholds.md) — mapping, catalogue, thresholds, price history and email are gone from the code. Two bridges landed here rather than in 15/19 because 13's schema forced them: `availability` in place of `latest_in_stock`, and `price_drop` / `price_rise` in place of `price_change`. The digest line is out of the server's crontab too (it belongs to the `pokemon` user, not root).
+- [15 — Availability config shape and parser](tickets/15-availability-config-and-parser.md) — `detect_availability` returns the four states plus the raw text; 23 configs migrated mechanically, 17 left untracked. Replaying the 10 page fixtures gives zero readings different from the old parser, so nothing is fixed yet and nothing is broken: ticket 18 is where the readings get better.
 
 ## Decisions so far
 

@@ -6,7 +6,6 @@
     "product_container": "article.ListProduct",
     "product_name": "h3.ListProductName a",
     "price": "dd.Price",
-    "in_stock": ".AvailabilityInStock",
     "product_url": "h3.ListProductName a"
   },
   "pagination": {

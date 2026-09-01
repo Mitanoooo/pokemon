@@ -7,13 +7,18 @@
     "https://porvoonpelikauppa.fi/pokemon-muut-tuotteet"
   ],
   "method": "css",
-  "stock_mode": "inverted",
+  "availability": {
+    "presence": {
+      "selector": ".out-of-stock",
+      "present": "out_of_stock",
+      "absent": "in_stock"
+    }
+  },
   "max_price": 5000.0,
   "selectors": {
     "product_container": ".card.item-widget",
     "product_name": ".card-title.item-brand",
     "price": ".price .normal-price",
-    "in_stock": ".out-of-stock",
     "product_url": "a.item-link"
   },
   "pagination": {

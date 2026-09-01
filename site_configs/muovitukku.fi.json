@@ -2,12 +2,17 @@
   "site_name": "Muovitukku",
   "source_url": "https://www.muovitukku.fi/tuote-osasto/lelut/sisalelut/pokemon/",
   "method": "css",
-  "stock_mode": "normal",
+  "availability": {
+    "presence": {
+      "selector": ".tuoteslideri-meta.is-green",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": "div.tuoteslideri-grid-item",
     "product_name": ".tuoteslideri-title-link",
     "price": ".tuoteslideri-price-value",
-    "in_stock": ".tuoteslideri-meta.is-green",
     "product_url": ".tuoteslideri-title-link"
   },
   "pagination": {

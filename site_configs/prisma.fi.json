@@ -2,13 +2,17 @@
   "site_name": "Prisma.fi",
   "source_url": "https://www.prisma.fi/tuotemerkit/pokemon-tcg",
   "method": "css",
-  "stock_mode": "badge_text",
-  "stock_badge_text": "Ei saatavilla",
+  "availability": {
+    "selector": ".background-error p",
+    "text_map": {
+      "Ei saatavilla": "out_of_stock"
+    },
+    "default": "in_stock"
+  },
   "selectors": {
     "product_container": "li[data-test-id^='products-list-item-']",
     "product_name": "a[data-test-id='product-card-link']",
     "price": "[data-test-id='product-card-price']",
-    "in_stock": ".background-error p",
     "product_url": "a[data-test-id='product-card-link']"
   },
   "pagination": {

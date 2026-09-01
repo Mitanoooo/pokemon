@@ -4,9 +4,14 @@ from pathlib import Path
 
 import pytest
 
+from scraper.parser import AVAILABILITY_FORMS, AVAILABILITY_STATES, availability_forms
 from scraper.price_parser import DEFAULT_MAX_PRICE
 
 CONFIG_DIR = Path(__file__).parent.parent / "site_configs"
+
+# Replaced by the availability block in ticket 15. A config naming any of these
+# is one the parser now ignores, which reads as a site that tracks nothing.
+RETIRED_STOCK_KEYS = ("stock_mode", "stock_badge_text")
 
 # Sites that formerly lived in price_parser._DOT_DECIMAL_SITES — the behaviour
 # now has to be spelled out in each config.
@@ -58,3 +63,55 @@ def test_offset_pagination_configs_declare_page_size():
         pagination = json.loads(path.read_text(encoding="utf-8")).get("pagination") or {}
         if pagination.get("type") == "offset":
             assert isinstance(pagination.get("page_size"), int), path
+
+
+# ── availability block ────────────────────────────────────────────────────────
+
+def test_no_config_still_names_a_retired_stock_key():
+    for path in sorted(CONFIG_DIR.glob("*.json")):
+        config = json.loads(path.read_text(encoding="utf-8"))
+        for key in RETIRED_STOCK_KEYS:
+            assert key not in config, f"{path.name} still has {key}"
+        assert "in_stock" not in (config.get("selectors") or {}), path.name
+
+
+def test_availability_states_are_all_in_the_allowed_set():
+    for path in sorted(CONFIG_DIR.glob("*.json")):
+        block = json.loads(path.read_text(encoding="utf-8")).get("availability")
+        if not block:
+            continue
+        states = list((block.get("text_map") or {}).values())
+        states += list((block.get("container_class_map") or {}).values())
+        states += list(((block.get("attribute") or {}).get("map") or {}).values())
+        presence = block.get("presence") or {}
+        states += [presence[k] for k in ("present", "absent") if presence.get(k)]
+        if block.get("default"):
+            states.append(block["default"])
+        for state in states:
+            assert state in AVAILABILITY_STATES, f"{path.name}: {state}"
+
+
+def test_availability_blocks_configure_at_least_one_form():
+    """A block that only sets a default would report as tracked but detect nothing."""
+    for path in sorted(CONFIG_DIR.glob("*.json")):
+        config = json.loads(path.read_text(encoding="utf-8"))
+        if config.get("availability"):
+            assert availability_forms(config), path.name
+
+
+def test_availability_blocks_have_no_unknown_keys():
+    allowed = set(AVAILABILITY_FORMS) | {"selector", "default"}
+    for path in sorted(CONFIG_DIR.glob("*.json")):
+        block = json.loads(path.read_text(encoding="utf-8")).get("availability") or {}
+        assert set(block) <= allowed, f"{path.name}: {set(block) - allowed}"
+
+
+def test_text_map_and_attribute_forms_have_something_to_read():
+    """text_map without a selector reads the whole container; attribute needs a name."""
+    for path in sorted(CONFIG_DIR.glob("*.json")):
+        block = json.loads(path.read_text(encoding="utf-8")).get("availability") or {}
+        if block.get("presence"):
+            assert (block["presence"].get("selector") or block.get("selector")), path.name
+        if block.get("attribute"):
+            assert block["attribute"].get("name"), path.name
+            assert block["attribute"].get("map"), path.name

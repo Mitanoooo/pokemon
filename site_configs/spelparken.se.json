@@ -9,15 +9,19 @@
     "https://spelparken.se/collections/pokemon-bundles"
   ],
   "method": "css",
-  "stock_mode": "badge_text",
-  "stock_badge_text": "Slutsåld",
+  "availability": {
+    "selector": ".card__badge .badge",
+    "text_map": {
+      "Slutsåld": "out_of_stock"
+    },
+    "default": "in_stock"
+  },
   "currency": "SEK",
   "selectors": {
     "product_container": "li.grid__item",
     "product_name": "h3.card__heading a",
     "price": ".price-item--sale",
     "price_fallback": ".price-item--regular",
-    "in_stock": ".card__badge .badge",
     "product_url": "h3.card__heading a"
   },
   "pagination": {

@@ -6,7 +6,6 @@
     "product_container": "[data-cy=\"article-grid\"] li",
     "product_name": "a[title]",
     "price": "[data-cy=\"product-price\"]",
-    "in_stock": null,
     "product_url": "a[href*=\"/tuote/\"]"
   },
   "pagination": {

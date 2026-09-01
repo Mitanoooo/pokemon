@@ -6,7 +6,6 @@
     "product_container": "li.ais-Hits-item",
     "product_name": "p.ais-hit--title",
     "price": "p.ais-hit--price",
-    "in_stock": null,
     "product_url": "a[href*='/products/']"
   },
   "pagination": {

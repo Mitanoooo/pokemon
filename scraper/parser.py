@@ -1,5 +1,4 @@
 import logging
-import re
 from typing import Optional
 
 from bs4 import BeautifulSoup, Tag
@@ -13,66 +12,119 @@ def _sel(config: dict, key: str) -> Optional[str]:
     return (config.get("selectors") or {}).get(key)
 
 
-def detect_stock(container_el: Tag, config: dict) -> Optional[bool]:
-    """Return True (in stock), False (out of stock), or None (unknown).
+AVAILABILITY_STATES = ("in_stock", "out_of_stock", "preorder", "unknown")
 
-    Mode is driven by config['stock_mode']:
-      - 'normal'          : presence of in_stock selector = in stock
-      - 'inverted'        : absence of in_stock selector = in stock
-      - 'badge_text'      : badge with exact text (stock_badge_text) = out of stock
-      - 'container_class' : container's own class list checked for instock/outofstock/unavailable
-      - 'attribute'       : data-ls-availability on the in_stock element
-      - None / 'unknown'  : return None
+# Resolution order of the availability block's forms. First hit wins.
+AVAILABILITY_FORMS = ("text_map", "presence", "container_class_map", "attribute")
+
+# availability_text is stored so a misread badge can be re-diagnosed without
+# re-scraping. 120 chars is enough for "Ennakkotilaus 12.9.2026" and its
+# neighbours without turning listings into a text dump.
+AVAILABILITY_TEXT_CAP = 120
+
+
+def _norm(text: str) -> str:
+    """Casefold and collapse whitespace, so badge text compares predictably."""
+    return " ".join(text.split()).casefold()
+
+
+def _text_of(el: Tag) -> Optional[str]:
+    return el.get_text(strip=True)[:AVAILABILITY_TEXT_CAP] or None
+
+
+def _state(value: str, config: dict) -> str:
+    """Clamp a config-supplied state to AVAILABILITY_STATES.
+
+    A typo such as `"instock"` would otherwise travel down to the availability
+    CHECK constraint and raise on the first insert, which run_site turns into a
+    site-wide failure. One unknown listing plus a warning is cheaper to read.
     """
-    mode = config.get("stock_mode")
-    if not mode or mode == "unknown":
-        return None
+    if value in AVAILABILITY_STATES:
+        return value
+    logger.warning(
+        "Availability state %r is not one of %s (site: %s) — reading as unknown",
+        value, AVAILABILITY_STATES, config.get("site_name", ""),
+    )
+    return "unknown"
 
-    sel = _sel(config,"in_stock")
 
-    if mode == "normal":
-        if not sel:
-            return None
-        return container_el.select_one(sel) is not None
+def availability_forms(config: dict) -> Optional[str]:
+    """The config's availability forms, comma-joined in precedence order.
 
-    if mode == "inverted":
-        if not sel:
-            return None
-        return container_el.select_one(sel) is None
+    Written to sites.availability_mode. None means the site tracks nothing,
+    which the app reports as "not tracked" rather than as all-unknown. A block
+    holding only a `default` tracks nothing either, so it reads as None too.
+    """
+    block = config.get("availability") or {}
+    return ",".join(f for f in AVAILABILITY_FORMS if block.get(f)) or None
 
-    if mode == "badge_text":
-        badge_text = config.get("stock_badge_text", "")
-        if not sel:
-            return None
-        # Search all matching elements (e.g. prisma.fi uses <p> which may appear
-        # multiple times; we need the one with the exact out-of-stock text)
-        for badge in container_el.select(sel):
-            if badge.get_text(strip=True) == badge_text:
-                return False
-        return True
 
-    if mode == "container_class":
+def detect_availability(
+    container_el: Tag, config: dict, from_preorder_url: bool = False
+) -> "tuple[str, Optional[str]]":
+    """Return (availability, availability_text) for one product container.
+
+    availability is one of AVAILABILITY_STATES. availability_text is the raw
+    text that produced it, capped, or None when the state came from a default.
+
+    Forms resolve in AVAILABILITY_FORMS order and the first one that produces a
+    state wins; a form that matches nothing falls through to the next. No
+    availability block at all means unknown, whatever the page says.
+    """
+    block = config.get("availability")
+    if not block:
+        return "unknown", None
+
+    selector = block.get("selector")
+
+    text_map = block.get("text_map")
+    if text_map:
+        elements = container_el.select(selector) if selector else [container_el]
+        haystacks = [(el, _norm(el.get_text())) for el in elements]
+        # Longest key first across every element, not per element: a container
+        # printing both "Varastossa" and "Ennakkotilaus 12.9.2026" must resolve
+        # to preorder whichever badge the shop renders first.
+        for key in sorted(text_map, key=len, reverse=True):
+            needle = _norm(key)
+            for el, haystack in haystacks:
+                if needle in haystack:
+                    return _state(text_map[key], config), _text_of(el)
+
+    presence = block.get("presence")
+    if presence:
+        sel = presence.get("selector") or selector
+        el = container_el.select_one(sel) if sel else None
+        if el is not None:
+            if presence.get("present"):
+                return _state(presence["present"], config), _text_of(el)
+        elif presence.get("absent"):
+            return _state(presence["absent"], config), None
+
+    class_map = block.get("container_class_map")
+    if class_map:
         classes = container_el.get("class") or []
-        if "instock" in classes:
-            return True
-        if "outofstock" in classes or "unavailable" in classes:
-            return False
-        return None
+        for cls, state in class_map.items():
+            if cls in classes:
+                return (
+                    _state(state, config),
+                    " ".join(classes)[:AVAILABILITY_TEXT_CAP],
+                )
 
-    if mode == "attribute":
-        if not sel:
-            return None
-        el = container_el.select_one(sel)
-        if el is None:
-            return None
-        avail = el.get("data-ls-availability", "")
-        if avail == "InStock":
-            return True
-        if avail == "OutOfStock":
-            return False
-        return None
+    attribute = block.get("attribute")
+    if attribute:
+        el = container_el.select_one(selector) if selector else container_el
+        value = el.get(attribute.get("name", ""), "") if el is not None else ""
+        if isinstance(value, list):
+            # bs4 hands back a list for multi-valued attributes such as class.
+            value = " ".join(value)
+        for key, state in (attribute.get("map") or {}).items():
+            if _norm(key) == _norm(value):
+                return _state(state, config), value[:AVAILABILITY_TEXT_CAP]
 
-    return None
+    if from_preorder_url:
+        return "preorder", "(preorder url)"
+
+    return _state(block.get("default", "unknown"), config), None
 
 
 def _extract_price(container_el: Tag, config: dict) -> Optional[float]:
@@ -183,11 +235,17 @@ def _extract_url(container_el: Tag, config: dict) -> str:
     return el.get("href", "") or el.get("data-ls-product-url", "")
 
 
-def scrape_page(html: str, config: dict) -> list[dict]:
+def scrape_page(
+    html: str, config: dict, from_preorder_url: bool = False
+) -> list[dict]:
     """Parse one page of HTML and return a list of product dicts.
 
-    Each dict has: raw_name, price (float or None), currency, in_stock
-    (bool or None), product_url.
+    Each dict has: raw_name, price (float or None), currency, availability,
+    availability_text, product_url.
+
+    from_preorder_url says the page came from one of the site's preorder URLs;
+    it is the last-resort availability signal (ticket 17 wires up the config
+    array that produces it).
 
     Supports container_scope config key to pre-filter the DOM (e.g. prisma.fi
     carousel exclusion).
@@ -215,14 +273,17 @@ def scrape_page(html: str, config: dict) -> list[dict]:
     for c in containers:
         raw_name = _extract_name(c, config)
         price = _extract_price(c, config)
-        in_stock = detect_stock(c, config)
+        availability, availability_text = detect_availability(
+            c, config, from_preorder_url=from_preorder_url
+        )
         product_url = _extract_url(c, config)
 
         results.append({
             "raw_name": raw_name,
             "price": price,
             "currency": currency,
-            "in_stock": in_stock,
+            "availability": availability,
+            "availability_text": availability_text,
             "product_url": product_url,
         })
 

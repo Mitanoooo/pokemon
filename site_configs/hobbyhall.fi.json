@@ -6,7 +6,6 @@
     "product_container": "div.c-product-card",
     "product_name": ".c-product-card__title a",
     "price": ".c-product-card__prices .c-price:not(.h-price--loyalty):not(.c-price--leasing)",
-    "in_stock": null,
     "product_url": ".c-product-card__title a"
   },
   "pagination": {

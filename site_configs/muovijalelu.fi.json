@@ -2,12 +2,17 @@
   "site_name": "Muovi ja Lelu",
   "source_url": "https://www.muovijalelu.fi/?s=pokemon&post_type=product",
   "method": "css",
-  "stock_mode": "normal",
+  "availability": {
+    "presence": {
+      "selector": "p.stock.in-stock",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": ".product-small.type-product",
     "product_name": ".product-title a",
     "price": ".woocommerce-Price-amount",
-    "in_stock": "p.stock.in-stock",
     "product_url": ".product-title a"
   },
   "pagination": {

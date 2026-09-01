@@ -2,13 +2,18 @@
   "site_name": "MaxGaming",
   "source_url": "https://www.maxgaming.fi/fi/pokemon",
   "method": "css",
-  "stock_mode": "normal",
+  "availability": {
+    "presence": {
+      "selector": ".Lager_1_FI",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "decimal_separator": "dot",
   "selectors": {
     "product_container": "div.PT_Wrapper",
     "product_name": ".PT_Beskr",
     "price": ".PT_PrisNormal",
-    "in_stock": ".Lager_1_FI",
     "product_url": "a.PT_Lank"
   },
   "pagination": {

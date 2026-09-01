@@ -2,12 +2,17 @@
   "site_name": "PBCards",
   "source_url": "https://pbcards.fi/collections/pokemon",
   "method": "css",
-  "stock_mode": "normal",
+  "availability": {
+    "presence": {
+      "selector": ".stock.overlay-valid",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": "li.product-card",
     "product_name": "h3 a",
     "price": "p.price",
-    "in_stock": ".stock.overlay-valid",
     "product_url": "h3 a"
   },
   "pagination": {

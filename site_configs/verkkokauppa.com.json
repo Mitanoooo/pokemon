@@ -6,7 +6,6 @@
     "product_container": "article[data-product-id]",
     "product_name": "h3",
     "price": ".stm-price__root",
-    "in_stock": null,
     "product_url": "a[href*='/product/']"
   },
   "pagination": {

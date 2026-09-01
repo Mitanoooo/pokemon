@@ -33,7 +33,6 @@ def _cfg(source_url="https://example.fi/shop/", max_pages=1, extra=None,
             "product_container": "li.product",
             "product_name": "h2",
             "price": ".price",
-            "in_stock": None,
             "product_url": "a",
         },
         "pagination": {"type": "none", "max_pages": max_pages},
@@ -49,7 +48,7 @@ def _cfg(source_url="https://example.fi/shop/", max_pages=1, extra=None,
 def _products(n=2):
     return [
         {"raw_name": f"Product {i}", "price": 9.99, "currency": "EUR",
-         "in_stock": True, "product_url": "https://example.fi/p"}
+         "availability": "in_stock", "product_url": "https://example.fi/p"}
         for i in range(n)
     ]
 
@@ -192,8 +191,8 @@ def test_run_all_sites_skips_disabled(tmp_path):
 def test_run_site_skips_none_price_products(conn):
     cfg = _cfg()
     products_with_none = [
-        {"raw_name": "Sealed Box", "price": 49.90, "currency": "EUR", "in_stock": True, "product_url": ""},
-        {"raw_name": "Single Card", "price": None, "currency": "EUR", "in_stock": True, "product_url": ""},
+        {"raw_name": "Sealed Box", "price": 49.90, "currency": "EUR", "availability": "in_stock", "product_url": ""},
+        {"raw_name": "Single Card", "price": None, "currency": "EUR", "availability": "in_stock", "product_url": ""},
     ]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_with_none):
@@ -207,8 +206,8 @@ def test_run_site_skips_none_price_products(conn):
 def test_run_site_all_none_prices_marks_failure(conn):
     cfg = _cfg()
     all_none = [
-        {"raw_name": "Single A", "price": None, "currency": "EUR", "in_stock": True, "product_url": ""},
-        {"raw_name": "Single B", "price": None, "currency": "EUR", "in_stock": True, "product_url": ""},
+        {"raw_name": "Single A", "price": None, "currency": "EUR", "availability": "in_stock", "product_url": ""},
+        {"raw_name": "Single B", "price": None, "currency": "EUR", "availability": "in_stock", "product_url": ""},
     ]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=all_none):
@@ -224,8 +223,8 @@ def test_run_site_clean_run_resets_null_price_count(conn):
     # first run: one skipped
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=[
-             {"raw_name": "Box", "price": 49.90, "currency": "EUR", "in_stock": True, "product_url": ""},
-             {"raw_name": "Card", "price": None, "currency": "EUR", "in_stock": True, "product_url": ""},
+             {"raw_name": "Box", "price": 49.90, "currency": "EUR", "availability": "in_stock", "product_url": ""},
+             {"raw_name": "Card", "price": None, "currency": "EUR", "availability": "in_stock", "product_url": ""},
          ]):
         run_site(cfg, conn)
 
@@ -346,9 +345,9 @@ def test_run_site_upserts_listing_for_every_product(conn):
 def test_run_site_upserts_listing_for_price_less_product(conn):
     cfg = _cfg()
     products = [
-        {"raw_name": "Sealed Box", "price": 49.90, "currency": "EUR", "in_stock": True,
+        {"raw_name": "Sealed Box", "price": 49.90, "currency": "EUR", "availability": "in_stock",
          "product_url": "https://example.fi/p/box"},
-        {"raw_name": "Single Card", "price": None, "currency": "EUR", "in_stock": True,
+        {"raw_name": "Single Card", "price": None, "currency": "EUR", "availability": "in_stock",
          "product_url": "https://example.fi/p/card"},
     ]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
@@ -394,9 +393,9 @@ def test_run_site_second_run_keeps_first_seen_and_moves_last_seen(conn):
 def test_run_site_resolves_relative_product_url_against_source_url(conn):
     cfg = _cfg(source_url="https://example.fi/shop/")
     products = [
-        {"raw_name": "Relative Box", "price": 10.0, "currency": "EUR", "in_stock": True,
+        {"raw_name": "Relative Box", "price": 10.0, "currency": "EUR", "availability": "in_stock",
          "product_url": "/products/relative-box"},
-        {"raw_name": "Sibling Box", "price": 11.0, "currency": "EUR", "in_stock": True,
+        {"raw_name": "Sibling Box", "price": 11.0, "currency": "EUR", "availability": "in_stock",
          "product_url": "sibling-box"},
     ]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
@@ -412,7 +411,7 @@ def test_run_site_resolves_relative_product_url_against_source_url(conn):
 def test_run_site_leaves_absolute_product_url_untouched(conn):
     cfg = _cfg(source_url="https://example.fi/shop/")
     products = [
-        {"raw_name": "Absolute Box", "price": 10.0, "currency": "EUR", "in_stock": True,
+        {"raw_name": "Absolute Box", "price": 10.0, "currency": "EUR", "availability": "in_stock",
          "product_url": "https://cdn.example.com/p/abs"},
     ]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
@@ -426,7 +425,7 @@ def test_run_site_leaves_absolute_product_url_untouched(conn):
 def test_run_site_missing_product_url_stored_as_null_not_source_url(conn):
     cfg = _cfg(source_url="https://example.fi/shop/")
     products = [
-        {"raw_name": "No Link Box", "price": 10.0, "currency": "EUR", "in_stock": True,
+        {"raw_name": "No Link Box", "price": 10.0, "currency": "EUR", "availability": "in_stock",
          "product_url": ""},
     ]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
@@ -440,8 +439,8 @@ def test_run_site_missing_product_url_stored_as_null_not_source_url(conn):
 def test_run_site_all_none_prices_still_upserts_listings(conn):
     cfg = _cfg()
     all_none = [
-        {"raw_name": "Single A", "price": None, "currency": "EUR", "in_stock": True, "product_url": ""},
-        {"raw_name": "Single B", "price": None, "currency": "EUR", "in_stock": True, "product_url": ""},
+        {"raw_name": "Single A", "price": None, "currency": "EUR", "availability": "in_stock", "product_url": ""},
+        {"raw_name": "Single B", "price": None, "currency": "EUR", "availability": "in_stock", "product_url": ""},
     ]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=all_none):
@@ -500,7 +499,7 @@ def test_run_site_emits_price_rise_event_on_higher_price(conn):
     conn.commit()
 
     products_v2 = [{"raw_name": "Product 0", "price": 14.99,
-                    "currency": "EUR", "in_stock": True, "product_url": ""}]
+                    "currency": "EUR", "availability": "in_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_v2):
         run_site(cfg, conn)
@@ -520,7 +519,7 @@ def test_run_site_emits_price_drop_event_on_lower_price(conn):
         run_site(cfg, conn)
 
     products_v2 = [{"raw_name": "Product 0", "price": 7.49,
-                    "currency": "EUR", "in_stock": True, "product_url": ""}]
+                    "currency": "EUR", "availability": "in_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_v2):
         run_site(cfg, conn)
@@ -546,16 +545,18 @@ def test_run_site_no_event_when_price_unchanged(conn):
     assert [r["event_type"] for r in rows] == ["new_listing"]
 
 
-def test_run_site_back_in_stock_emitted_with_stock_mode(conn):
-    cfg = _cfg(extra={"stock_mode": "badge_text"})
+def test_run_site_back_in_stock_emitted_when_the_site_tracks_availability(conn):
+    cfg = _cfg(extra={"availability": {"selector": ".badge",
+                                       "text_map": {"Loppu": "out_of_stock"},
+                                       "default": "in_stock"}})
     products_out = [{"raw_name": "Box", "price": 9.99,
-                     "currency": "EUR", "in_stock": False, "product_url": ""}]
+                     "currency": "EUR", "availability": "out_of_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_out):
         run_site(cfg, conn)
 
     products_in = [{"raw_name": "Box", "price": 9.99,
-                    "currency": "EUR", "in_stock": True, "product_url": ""}]
+                    "currency": "EUR", "availability": "in_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_in):
         run_site(cfg, conn)
@@ -569,14 +570,14 @@ def test_run_site_price_event_threshold_is_1_for_sek(conn):
     cfg["site_name"] = "Spelparken"
     # First run: 499 SEK
     products_v1 = [{"raw_name": "Box", "price": 499.0,
-                    "currency": "SEK", "in_stock": True, "product_url": ""}]
+                    "currency": "SEK", "availability": "in_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_v1):
         run_site(cfg, conn)
 
     # Second run: 499.5 SEK — less than 1 SEK delta, no price event expected
     products_v2 = [{"raw_name": "Box", "price": 499.5,
-                    "currency": "SEK", "in_stock": True, "product_url": ""}]
+                    "currency": "SEK", "availability": "in_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_v2):
         run_site(cfg, conn)
@@ -589,14 +590,14 @@ def test_run_site_price_event_threshold_fires_at_1_for_sek(conn):
     cfg = _cfg(source_url="https://spelparken.se/shop/")
     cfg["site_name"] = "Spelparken"
     products_v1 = [{"raw_name": "Box", "price": 499.0,
-                    "currency": "SEK", "in_stock": True, "product_url": ""}]
+                    "currency": "SEK", "availability": "in_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_v1):
         run_site(cfg, conn)
 
     # Second run: 500 SEK — exactly 1 SEK delta, a price event is expected
     products_v2 = [{"raw_name": "Box", "price": 500.0,
-                    "currency": "SEK", "in_stock": True, "product_url": ""}]
+                    "currency": "SEK", "availability": "in_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_v2):
         run_site(cfg, conn)
@@ -605,16 +606,68 @@ def test_run_site_price_event_threshold_fires_at_1_for_sek(conn):
     assert "price_rise" in types
 
 
-def test_run_site_back_in_stock_not_emitted_without_stock_mode(conn):
-    cfg = _cfg()  # no stock_mode
+def test_run_site_stores_availability_and_its_text(conn):
+    cfg = _cfg(extra={"availability": {"selector": ".badge",
+                                       "text_map": {"Ennakkotilaus": "preorder"}}})
+    products = [{"raw_name": "Box", "price": 9.99, "currency": "EUR",
+                 "availability": "preorder",
+                 "availability_text": "Ennakkotilaus 12.9.2026",
+                 "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products):
+        run_site(cfg, conn)
+
+    row = conn.execute("SELECT availability, availability_text FROM listings").fetchone()
+    assert row["availability"] == "preorder"
+    assert row["availability_text"] == "Ennakkotilaus 12.9.2026"
+
+
+def test_run_site_records_the_configs_availability_forms_on_the_site(conn):
+    cfg = _cfg(extra={"availability": {
+        "selector": ".badge",
+        "text_map": {"Loppu": "out_of_stock"},
+        "presence": {"selector": ".cart", "present": "in_stock"},
+    }})
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    row = conn.execute("SELECT availability_mode FROM sites WHERE name='Test Shop'").fetchone()
+    assert row["availability_mode"] == "text_map,presence"
+
+
+def test_run_site_leaves_availability_mode_null_for_an_untracked_site(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    row = conn.execute("SELECT availability_mode FROM sites WHERE name='Test Shop'").fetchone()
+    assert row["availability_mode"] is None
+
+
+def test_run_site_records_availability_mode_even_when_the_site_fails(conn):
+    cfg = _cfg(extra={"availability": {"container_class_map": {"instock": "in_stock"}}})
+    with patch("scraper.runner.fetch", side_effect=FetchError("HTTP 503")):
+        run_site(cfg, conn)
+
+    row = conn.execute(
+        "SELECT availability_mode, consecutive_failures FROM sites WHERE name='Test Shop'"
+    ).fetchone()
+    assert row["availability_mode"] == "container_class_map"
+    assert row["consecutive_failures"] == 1
+
+
+def test_run_site_back_in_stock_not_emitted_without_an_availability_block(conn):
+    cfg = _cfg()  # no availability block, so every sighting reads unknown
     products_out = [{"raw_name": "Box", "price": 9.99,
-                     "currency": "EUR", "in_stock": False, "product_url": ""}]
+                     "currency": "EUR", "availability": "out_of_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_out):
         run_site(cfg, conn)
 
     products_in = [{"raw_name": "Box", "price": 9.99,
-                    "currency": "EUR", "in_stock": True, "product_url": ""}]
+                    "currency": "EUR", "availability": "in_stock", "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=products_in):
         run_site(cfg, conn)
@@ -718,7 +771,7 @@ def test_run_site_undercount_warning_does_not_mark_failure(conn, caplog):
 
 def _named_products(*names):
     return [
-        {"raw_name": n, "price": 9.99, "in_stock": True, "product_url": "/p"}
+        {"raw_name": n, "price": 9.99, "availability": "in_stock", "product_url": "/p"}
         for n in names
     ]
 

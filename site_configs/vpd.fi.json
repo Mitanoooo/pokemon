@@ -15,7 +15,6 @@
     "product_container": "li.product-item",
     "product_name": ".product-item-link",
     "price": ".price",
-    "in_stock": ".stock-status.available",
     "product_url": ".product-item-link"
   },
   "pagination": {

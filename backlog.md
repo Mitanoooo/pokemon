@@ -18,6 +18,8 @@ Items deferred from design sessions. Pick up when the relevant area is under act
 - **Action:** add `"decimal_separator": "dot"` to `karukortti.fi.json` and re-scrape to confirm; decide whether `swagykarp.fi` gets `"disabled": true` or a queue-aware fetch. Neither site is in issue 04's scope, and neither is affected by its changes.
 
 ### Stock detection — site configs
-- 38 of 40 configs have no `stock_mode`, so `detect_stock` returns `None` for every reading.
-- Currently only `badge_text` is wired for 2 sites; the other modes (`normal`, `inverted`, `container_class`, `attribute`) are implemented but unused.
-- **Action:** go through each active site's HTML and add the appropriate `stock_mode` + `in_stock` selector. This will unlock reliable "back in stock" events in the updates feed.
+Superseded by the tracker refocus. `stock_mode` is gone; configs carry an
+`availability` block and 23 of 40 have one after ticket 15's mechanical
+migration. Getting the remaining 17 tracked, and fixing the badge_text sites
+where a preorder badge still reads as in stock, is tickets 16 to 18 in
+`.wayfinder/`.

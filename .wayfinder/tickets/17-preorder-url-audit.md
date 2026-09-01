@@ -11,6 +11,14 @@ No site config mentions ennakkotilaus, preorder or tulossa today, so preorder li
 - `runner._scrape_source_url` passes `from_preorder_url` into `detect_availability` and into `upsert_listing`.
 - A listing seen on both a normal and a preorder URL in one run keeps the last sighting's flag, matching the existing "last occurrence wins" dedupe.
 
+**Decide first: where does the flag sit in the resolution order?** Ticket 15 put
+`from_preorder_url` last, after every form, which makes it dead for the 14 `presence`
+sites: a block with both `present` and `absent` always returns a state, so the flag can
+never be reached. Left alone, wiring `preorder_urls` would only change readings on the
+`text_map` and untracked sites. Either the flag outranks the forms for pages fetched from a
+preorder URL, or it at least outranks the `absent` branch. Pick one here and change
+`detect_availability` with it; the parser tests for precedence live in `tests/test_parser.py`.
+
 **Audit, per site (40):** find the shop's preorder category or tag URL. Candidate patterns to check: `/ennakkotilaus`, `/ennakkotilaukset`, `/ennakko`, `/tulossa`, `/pre-order`, `/preorder`, `/kommande`, `/kommer-snart`, plus the shop's own tag and filter URLs. Verify the page actually lists products and paginates the same way the site's other URLs do. Where a shop has no separate preorder page, record that and note whether its normal categories carry preorder items with a badge (that case is ticket 18's problem, not this one).
 
 The same pass re-checks normal category coverage: a product that is never fetched can never produce an event. Where a gap is obvious, add the URL.

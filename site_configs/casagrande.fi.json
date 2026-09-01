@@ -2,12 +2,17 @@
   "site_name": "Casagrande",
   "source_url": "https://casagrande.fi/collections/pokemon",
   "method": "css",
-  "stock_mode": "inverted",
+  "availability": {
+    "presence": {
+      "selector": ".label--subdued",
+      "present": "out_of_stock",
+      "absent": "in_stock"
+    }
+  },
   "selectors": {
     "product_container": ".product-item",
     "product_name": ".product-item-meta__title",
     "price": ".price-list .price",
-    "in_stock": ".label--subdued",
     "product_url": ".product-item-meta__title"
   },
   "pagination": {

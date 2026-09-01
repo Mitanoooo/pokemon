@@ -6,7 +6,6 @@
     "product_container": ".product-card-grid-item",
     "product_name": ".product-name-text",
     "price": ".product-price .text-price",
-    "in_stock": ".product-stock-balance-in-stock",
     "product_url": "a[href*='/tuote/']"
   },
   "pagination": {

@@ -2,12 +2,17 @@
   "site_name": "Elli Madelli",
   "source_url": "https://www.ellimadelli.fi/collections/pokemon",
   "method": "css",
-  "stock_mode": "normal",
+  "availability": {
+    "presence": {
+      "selector": ".product-stock-level--high, .product-stock-level--low",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": ".productgrid--item",
     "product_name": ".productitem--title a",
     "price": ".productitem__price .price__current--min",
-    "in_stock": ".product-stock-level--high, .product-stock-level--low",
     "product_url": ".productitem--title a"
   },
   "pagination": {

@@ -10,14 +10,18 @@
     "https://peliparatiisi.net/en/collections/pokemon-erikoisjulkaisut"
   ],
   "method": "css",
-  "stock_mode": "badge_text",
-  "stock_badge_text": "Sold out",
+  "availability": {
+    "selector": ".badge",
+    "text_map": {
+      "Sold out": "out_of_stock"
+    },
+    "default": "in_stock"
+  },
   "selectors": {
     "product_container": "li.grid__item",
     "product_name": "h3.card__heading.h5 a",
     "price": ".price-item--sale",
     "price_fallback": ".price-item--regular",
-    "in_stock": ".badge",
     "product_url": "h3.card__heading.h5 a"
   },
   "pagination": {

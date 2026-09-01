@@ -59,7 +59,8 @@ def upsert_listing(
     product_url: Optional[str],
     price: Optional[float],
     currency: Optional[str],
-    in_stock: Optional[bool],
+    availability: str = "unknown",
+    availability_text: Optional[str] = None,
     run_id: Optional[int] = None,
 ) -> None:
     """Insert-or-update the listings row for one (site_id, raw_name) sighting.
@@ -73,29 +74,29 @@ def upsert_listing(
     value: latest_price is "the last price we could parse", NULL only when no
     price has ever been parsed for this pair.
 
-    availability, by contrast, is overwritten on every sighting: it means "state
-    as of the last time we saw this listing", not "best state ever known".
-    Ticket 15 replaces the in_stock argument with the parser's four-state
-    availability; until then True / False / None map to in_stock / out_of_stock
-    / unknown.
+    availability and availability_text, by contrast, are overwritten on every
+    sighting, together: they mean "state as of the last time we saw this
+    listing", not "best state ever known", and a text kept from an older badge
+    would no longer explain the state next to it.
     """
     now = _now()
     url = product_url or None
-    availability = {True: "in_stock", False: "out_of_stock"}.get(in_stock, "unknown")
 
     conn.execute(
         """
         INSERT INTO listings
             (site_id, raw_name, product_url, first_seen_at, last_seen_at,
-             last_run_id, latest_price, latest_currency, availability)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             last_run_id, latest_price, latest_currency, availability,
+             availability_text)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (site_id, raw_name) DO UPDATE SET
-            product_url     = COALESCE(excluded.product_url, listings.product_url),
-            last_seen_at    = excluded.last_seen_at,
-            last_run_id     = excluded.last_run_id,
-            latest_price    = COALESCE(excluded.latest_price, listings.latest_price),
-            latest_currency = COALESCE(excluded.latest_currency, listings.latest_currency),
-            availability    = excluded.availability
+            product_url       = COALESCE(excluded.product_url, listings.product_url),
+            last_seen_at      = excluded.last_seen_at,
+            last_run_id       = excluded.last_run_id,
+            latest_price      = COALESCE(excluded.latest_price, listings.latest_price),
+            latest_currency   = COALESCE(excluded.latest_currency, listings.latest_currency),
+            availability      = excluded.availability,
+            availability_text = excluded.availability_text
         """,
         (
             site_id,
@@ -106,7 +107,8 @@ def upsert_listing(
             run_id,
             price,
             currency,
-            availability,
+            availability or "unknown",
+            availability_text,
         ),
     )
     conn.commit()
@@ -147,6 +149,10 @@ def prune_updates(conn: sqlite3.Connection, days: int = 30) -> None:
 def get_updates(conn: sqlite3.Connection, limit: int = 500) -> list[dict]:
     """Return the newest `limit` update rows, newest-first.
 
+    created_at has second granularity and one run writes its whole batch inside
+    a second or two, so id breaks the tie: which rows the cap keeps is at least
+    stable between two calls.
+
     The cap is a stopgap: the mapping filter that used to keep this page small
     is gone, and the page renders a widget per row, so an unbounded 30-day
     window would render thousands of them. Ticket 20 replaces this with a
@@ -161,7 +167,7 @@ def get_updates(conn: sqlite3.Connection, limit: int = 500) -> list[dict]:
         FROM updates u
         LEFT JOIN sites s ON s.id = u.site_id
         LEFT JOIN scrape_runs sr ON sr.id = u.run_id
-        ORDER BY u.created_at DESC
+        ORDER BY u.created_at DESC, u.id DESC
         LIMIT ?
         """,
         (limit,),
@@ -204,7 +210,14 @@ def update_site_health(
     success: bool,
     error_text: Optional[str] = None,
     null_price_count: int = 0,
+    availability_mode: Optional[str] = None,
 ) -> None:
+    """Record the outcome of one site's run.
+
+    availability_mode is the config's availability forms comma-joined, or NULL
+    when the config has no block. It is written on failed runs too: it describes
+    the config, not the run, and the By site page reads NULL as "not tracked".
+    """
     if success:
         conn.execute(
             """
@@ -212,10 +225,11 @@ def update_site_health(
             SET last_scraped_at = ?,
                 consecutive_failures = 0,
                 last_error = NULL,
-                null_price_count = ?
+                null_price_count = ?,
+                availability_mode = ?
             WHERE id = ?
             """,
-            (_now(), null_price_count, site_id),
+            (_now(), null_price_count, availability_mode, site_id),
         )
     else:
         conn.execute(
@@ -223,9 +237,10 @@ def update_site_health(
             UPDATE sites
             SET consecutive_failures = consecutive_failures + 1,
                 last_error = ?,
-                null_price_count = ?
+                null_price_count = ?,
+                availability_mode = ?
             WHERE id = ?
             """,
-            (error_text, null_price_count, site_id),
+            (error_text, null_price_count, availability_mode, site_id),
         )
     conn.commit()

@@ -2,12 +2,17 @@
   "site_name": "Blockhouse Games",
   "source_url": "https://blockhousegames.net/collections/pokemon-tcg",
   "method": "css",
-  "stock_mode": "normal",
+  "availability": {
+    "presence": {
+      "selector": ".product-item__inventory",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": "div.product-item.product-item--vertical",
     "product_name": ".product-item__title",
     "price": ".product-item__price-list .price",
-    "in_stock": ".product-item__inventory",
     "product_url": ".product-item__title"
   },
   "pagination": {

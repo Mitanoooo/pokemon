@@ -2,13 +2,11 @@
   "site_name": "Lelukauppa Partanen",
   "source_url": "https://lelupartanen.fi/category/202/keraeilykortit-ja-kortit",
   "method": "css",
-  "stock_mode": "unknown",
   "decimal_separator": "dot",
   "selectors": {
     "product_container": "article[itemtype='https://schema.org/Product']",
     "product_name": "[itemprop='name']",
     "price": "[itemprop='Price']",
-    "in_stock": null,
     "product_url": "a[itemprop='url']"
   },
   "pagination": {

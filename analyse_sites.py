@@ -49,8 +49,15 @@ Respond ONLY with a valid JSON object, no markdown, no explanation. Use this exa
     "product_container": "CSS selector for the element wrapping each product",
     "product_name": "CSS selector for product name (relative to container)",
     "price": "CSS selector for price (relative to container)",
-    "in_stock": "CSS selector or null — element present means in stock, absent means out of stock",
     "product_url": "CSS selector for product link (relative to container), or null"
+  },
+  "availability": {
+    "selector": "CSS selector for the stock badge (relative to container), or null for the container itself",
+    "text_map": {"badge text substring": "in_stock" | "out_of_stock" | "preorder"},
+    "presence": {"selector": "CSS selector", "present": "<state>", "absent": "<state>"},
+    "container_class_map": {"class on the container": "<state>"},
+    "attribute": {"name": "attribute on the selector element", "map": {"value": "<state>"}},
+    "default": "state to use when nothing above matches, normally unknown"
   },
   "pagination": {
     "type": "none" | "next_button" | "url_pattern",
@@ -61,6 +68,14 @@ Respond ONLY with a valid JSON object, no markdown, no explanation. Use this exa
   "confidence": "high" | "medium" | "low",
   "notes": "Any caveats — JS rendering needed, unusual structure, etc."
 }
+
+The "availability" block tells the scraper how this shop shows stock state. Keep only the
+forms the page actually supports and drop the rest; they resolve in the order listed above and
+the first hit wins. States are exactly "in_stock", "out_of_stock", "preorder" or "unknown".
+Look for Finnish and Swedish preorder wording (ennakkotilaus, ennakko, tulossa, saapuu,
+julkaisu, preorder, kommer, släpp) and map it to "preorder", not "in_stock". If the listing
+page carries no stock signal at all, leave "availability" out entirely rather than guessing:
+a missing block means "not tracked", which is honest, while a wrong one is silently wrong.
 
 If the page requires JavaScript rendering and you cannot identify products from static HTML,
 set confidence to "low" and explain in notes.

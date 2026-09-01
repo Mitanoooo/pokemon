@@ -7,7 +7,6 @@
     "product_container": "div.PT_Wrapper",
     "product_name": "div.PT_Beskr a",
     "price": "span.PT_PrisNormal",
-    "in_stock": null,
     "product_url": "div.PT_Beskr a"
   },
   "pagination": {

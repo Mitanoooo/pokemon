@@ -4,7 +4,14 @@ Confidence counts: **21 high**, **16 medium**, **3 low**.
 
 ## Config fields the scraper reads
 
-- `site_name`, `method`, `selectors`, `stock_mode`, `confidence`, `notes` — as in every config.
+- `site_name`, `method`, `selectors`, `confidence`, `notes` — as in every config.
+- `availability` — how to read a listing's state. Optional; a config without it
+  reports as "not tracked" rather than as all-unknown. Keys, resolved in this
+  order and first hit wins: `text_map` (badge text to state, matched as a
+  casefolded substring under `selector`), `presence` (`selector` plus `present`
+  and `absent` states), `container_class_map` (the container's own classes),
+  `attribute` (`name` plus a value `map`), then a preorder-URL fallback, then
+  `default`. States are `in_stock`, `out_of_stock`, `preorder`, `unknown`.
 - `source_url` — the single category page to scrape.
 - `source_urls` — array form of the above, for sites that split products across
   several category pages. Every URL is paginated on its own and all of them

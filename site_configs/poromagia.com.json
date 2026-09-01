@@ -8,12 +8,17 @@
     "https://poromagia.com/fi/catalogue/category/pokemon/pokemon-tuotepakkaukset/pokemon-tinit_310/"
   ],
   "method": "css",
-  "stock_mode": "normal",
+  "availability": {
+    "presence": {
+      "selector": ".instock.availability",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "selectors": {
     "product_container": "article.product_line",
     "product_name": "h3 a",
     "price": ".price_color",
-    "in_stock": ".instock.availability",
     "product_url": "h3 a"
   },
   "pagination": {

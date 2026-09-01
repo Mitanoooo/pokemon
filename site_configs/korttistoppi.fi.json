@@ -15,13 +15,17 @@
     "https://www.korttistoppi.fi/tuoteryhma/30th-celebration"
   ],
   "method": "css",
-  "stock_mode": "badge_text",
-  "stock_badge_text": "Loppunut",
+  "availability": {
+    "selector": ".product-badge-content",
+    "text_map": {
+      "Loppunut": "out_of_stock"
+    },
+    "default": "in_stock"
+  },
   "selectors": {
     "product_container": ".product-card-grid-item",
     "product_name": ".product-name-text",
     "price": ".text-price",
-    "in_stock": ".product-badge-content",
     "product_url": "a[href*='/tuote/']"
   },
   "pagination": {

@@ -6,6 +6,17 @@ Fill in a real `availability` block for every site, checked against live HTML wi
 
 Starting point after ticket 15: 23 sites carry a mechanically migrated block that reproduces today's readings (including the badge_text sites, where a preorder badge still resolves to `in_stock`), and 17 sites have no block at all (11 never had `stock_mode`, 6 set `"unknown"`).
 
+Four of those 17 had an `in_stock` selector written but no mode to interpret it, so ticket 15 deleted the selector along with the rest. They are the cheapest four to start on, and these are the selectors that were there:
+
+| Site | Old `in_stock` selector |
+|---|---|
+| euroelite.fi | `.product-stock-balance-in-stock` |
+| fantasialinna.com | `.in-stock` |
+| konsolinet.fi | `.AvailabilityInStock` |
+| vpd.fi | `.stock-status.available` |
+
+Two known-wrong migrated blocks to check early: `prisma.fi`'s `text_map` selector is `.background-error p`, and the saved fixture's class is `bg-color-background-error`, so nothing matches and every listing reads `in_stock` from the default. `tcgkauppa.fi` and the other WooCommerce sites were on `container_class`, which is fine, but their old descendant selector (`li.product.instock`) never matched anything either.
+
 **Per site:**
 
 1. Run `python -m scraper.probe site_configs/<site>.json`.
