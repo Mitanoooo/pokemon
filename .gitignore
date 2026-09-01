@@ -5,18 +5,3 @@ venv/
 .env
 *.db
 logs/
-
-# normalisation-runbook.md transient artifacts
-pending_names.json
-new_names.json
-mappings.json
-skipped_merch.txt
-skipped_no_match.txt
-
-# apply_batch.py local accumulation file
-draft_mappings.json
-
-# derived by extract_catalog.py from the catalog_*.txt dumps + cardmarket_catalogue.json
-catalog_scrape.json
-# the raw Cardmarket export it reads (multi-MB, re-fetchable)
-cardmarket_catalogue.json

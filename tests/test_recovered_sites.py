@@ -1,12 +1,12 @@
 """Regression guards for the four sites of issue 04.
 
 Keräilykortti.fi, Porvoon Pelikauppa, Proshop and Spelparken had never
-produced a price reading: the pre-fix runner passed price-less products
-straight to write_readings, so a single unpriced card ("NOT NULL constraint
-failed: price_readings.price") lost the whole site's readings for that run.
+produced a price at all: the pre-fix runner handed price-less products straight
+to the writer, and a single unpriced card broke the insert for the whole site's
+sightings that run.
 
 These tests run each site's *real* config file against a saved page and assert
-it still yields priced readings, so a future selector edit cannot quietly take
+it still yields priced products, so a future selector edit cannot quietly take
 a site back to zero.
 """
 import json

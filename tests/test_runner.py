@@ -56,16 +56,6 @@ def _products(n=2):
 
 # ── run_site: happy path ──────────────────────────────────────────────────────
 
-def test_run_site_writes_readings(conn):
-    cfg = _cfg()
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(3)):
-        run_site(cfg, conn)
-
-    rows = conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0]
-    assert rows == 3
-
-
 def test_run_site_updates_health_success(conn):
     cfg = _cfg()
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
@@ -155,8 +145,8 @@ def test_run_site_currency_sek_for_se_domain(conn):
          patch("scraper.runner.scrape_page", return_value=_products(1)):
         run_site(cfg, conn)
 
-    row = conn.execute("SELECT currency FROM price_readings").fetchone()
-    assert row["currency"] == "SEK"
+    row = conn.execute("SELECT latest_currency FROM listings").fetchone()
+    assert row["latest_currency"] == "SEK"
 
 
 def test_run_site_currency_eur_for_fi_domain(conn):
@@ -165,8 +155,8 @@ def test_run_site_currency_eur_for_fi_domain(conn):
          patch("scraper.runner.scrape_page", return_value=_products(1)):
         run_site(cfg, conn)
 
-    row = conn.execute("SELECT currency FROM price_readings").fetchone()
-    assert row["currency"] == "EUR"
+    row = conn.execute("SELECT latest_currency FROM listings").fetchone()
+    assert row["latest_currency"] == "EUR"
 
 
 # ── run_all_sites: disabled sites are skipped ────────────────────────────────
@@ -193,7 +183,7 @@ def test_run_all_sites_skips_disabled(tmp_path):
     names = [r["name"] for r in sites]
     assert "Test Shop" in names  # enabled site was scraped
     # disabled site never upserted / scraped
-    enabled_rows = conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0]
+    enabled_rows = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
     assert enabled_rows == 1
 
 
@@ -209,9 +199,6 @@ def test_run_site_skips_none_price_products(conn):
          patch("scraper.runner.scrape_page", return_value=products_with_none):
         run_site(cfg, conn)
 
-    rows = conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0]
-    assert rows == 1  # only the valid-price product written
-
     site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
     assert site["consecutive_failures"] == 0  # partial success = healthy
     assert site["null_price_count"] == 1
@@ -226,9 +213,6 @@ def test_run_site_all_none_prices_marks_failure(conn):
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=all_none):
         run_site(cfg, conn)
-
-    rows = conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0]
-    assert rows == 0
 
     site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
     assert site["consecutive_failures"] == 1
@@ -286,7 +270,7 @@ def test_run_all_sites_exception_does_not_abort_others(tmp_path):
     conn = db.get_connection(db_path)
     # Site B succeeded
     rows = conn.execute(
-        "SELECT COUNT(*) FROM price_readings pr JOIN sites s ON s.id=pr.site_id WHERE s.name='Site B'"
+        "SELECT COUNT(*) FROM listings l JOIN sites s ON s.id=l.site_id WHERE s.name='Site B'"
     ).fetchone()[0]
     assert rows == 1
 
@@ -305,17 +289,6 @@ def test_run_site_creates_scrape_run_row(conn):
     assert row["finished_at"] is not None
 
 
-def test_run_site_price_readings_carry_run_id(conn):
-    cfg = _cfg()
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(2)):
-        run_site(cfg, conn)
-
-    run_id = conn.execute("SELECT id FROM scrape_runs").fetchone()["id"]
-    run_ids = [r["run_id"] for r in conn.execute("SELECT run_id FROM price_readings").fetchall()]
-    assert run_ids == [run_id, run_id]
-
-
 def test_run_site_uses_supplied_run_id_without_creating_a_run(conn):
     cfg = _cfg()
     run_id = db.start_run(conn)
@@ -325,7 +298,7 @@ def test_run_site_uses_supplied_run_id_without_creating_a_run(conn):
         run_site(cfg, conn, run_id=run_id)
 
     assert conn.execute("SELECT COUNT(*) FROM scrape_runs").fetchone()[0] == 1
-    assert conn.execute("SELECT run_id FROM price_readings").fetchone()["run_id"] == run_id
+    assert conn.execute("SELECT last_run_id FROM listings").fetchone()["last_run_id"] == run_id
 
 
 def test_run_all_sites_creates_one_finished_run_shared_by_all_sites(tmp_path):
@@ -353,7 +326,7 @@ def test_run_all_sites_creates_one_finished_run_shared_by_all_sites(tmp_path):
     assert runs[0]["started_at"] is not None
     assert runs[0]["finished_at"] is not None
 
-    run_ids = {r["run_id"] for r in conn.execute("SELECT run_id FROM price_readings").fetchall()}
+    run_ids = {r["last_run_id"] for r in conn.execute("SELECT last_run_id FROM listings").fetchall()}
     assert run_ids == {runs[0]["id"]}
 
 
@@ -387,11 +360,6 @@ def test_run_site_upserts_listing_for_price_less_product(conn):
     assert listing is not None
     assert listing["latest_price"] is None
     assert listing["product_url"] == "https://example.fi/p/card"
-
-    # …but it stays out of price_readings
-    reading_names = [r["raw_name"] for r in conn.execute(
-        "SELECT raw_name FROM price_readings").fetchall()]
-    assert reading_names == ["Sealed Box"]
 
 
 def test_run_site_listings_carry_last_run_id(conn):
@@ -482,31 +450,6 @@ def test_run_site_all_none_prices_still_upserts_listings(conn):
     # site is marked unhealthy, but the sightings are still recorded so they do
     # not look brand new on the next run
     assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 2
-    assert conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0] == 0
-
-
-def test_run_site_listing_product_id_resolved_from_name_mappings(conn):
-    cfg = _cfg()
-    conn.execute(
-        """
-        INSERT INTO cardmarket_products (id, name, id_category, category_name, id_expansion)
-        VALUES (500, 'Prismatic Evolutions ETB', 1, 'Elite Trainer Boxes', 1)
-        """
-    )
-    conn.execute(
-        """
-        INSERT INTO name_mappings (raw_name, cardmarket_product_id, status)
-        VALUES ('Product 0', 500, 'mapped')
-        """
-    )
-    conn.commit()
-
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(1)):
-        run_site(cfg, conn)
-
-    row = conn.execute("SELECT product_id FROM listings").fetchone()
-    assert row["product_id"] == 500
 
 
 # ── listings: real fixture + real site config ─────────────────────────────────
@@ -543,7 +486,7 @@ def test_run_site_emits_new_listing_event_for_first_seen_product(conn):
     assert rows[0]["raw_name"] == "Product 0"
 
 
-def test_run_site_emits_price_change_event_on_price_delta(conn):
+def test_run_site_emits_price_rise_event_on_higher_price(conn):
     cfg = _cfg()
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
          patch("scraper.runner.scrape_page", return_value=_products(1)):
@@ -563,11 +506,29 @@ def test_run_site_emits_price_change_event_on_price_delta(conn):
         run_site(cfg, conn)
 
     changes = conn.execute(
-        "SELECT * FROM updates WHERE event_type='price_change'"
+        "SELECT * FROM updates WHERE event_type='price_rise'"
     ).fetchall()
     assert len(changes) == 1
     assert changes[0]["old_value"] == "9.99"
     assert changes[0]["new_value"] == "14.99"
+
+
+def test_run_site_emits_price_drop_event_on_lower_price(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(cfg, conn)
+
+    products_v2 = [{"raw_name": "Product 0", "price": 7.49,
+                    "currency": "EUR", "in_stock": True, "product_url": ""}]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=products_v2):
+        run_site(cfg, conn)
+
+    drops = conn.execute("SELECT * FROM updates WHERE event_type='price_drop'").fetchall()
+    assert len(drops) == 1
+    assert drops[0]["old_value"] == "9.99"
+    assert drops[0]["new_value"] == "7.49"
 
 
 def test_run_site_no_event_when_price_unchanged(conn):
@@ -603,7 +564,7 @@ def test_run_site_back_in_stock_emitted_with_stock_mode(conn):
     assert "back_in_stock" in types
 
 
-def test_run_site_price_change_threshold_is_1_for_sek(conn):
+def test_run_site_price_event_threshold_is_1_for_sek(conn):
     cfg = _cfg(source_url="https://spelparken.se/shop/")
     cfg["site_name"] = "Spelparken"
     # First run: 499 SEK
@@ -613,7 +574,7 @@ def test_run_site_price_change_threshold_is_1_for_sek(conn):
          patch("scraper.runner.scrape_page", return_value=products_v1):
         run_site(cfg, conn)
 
-    # Second run: 499.5 SEK — less than 1 SEK delta, no price_change expected
+    # Second run: 499.5 SEK — less than 1 SEK delta, no price event expected
     products_v2 = [{"raw_name": "Box", "price": 499.5,
                     "currency": "SEK", "in_stock": True, "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
@@ -621,10 +582,10 @@ def test_run_site_price_change_threshold_is_1_for_sek(conn):
         run_site(cfg, conn)
 
     types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
-    assert "price_change" not in types
+    assert "price_rise" not in types
 
 
-def test_run_site_price_change_threshold_fires_at_1_for_sek(conn):
+def test_run_site_price_event_threshold_fires_at_1_for_sek(conn):
     cfg = _cfg(source_url="https://spelparken.se/shop/")
     cfg["site_name"] = "Spelparken"
     products_v1 = [{"raw_name": "Box", "price": 499.0,
@@ -633,7 +594,7 @@ def test_run_site_price_change_threshold_fires_at_1_for_sek(conn):
          patch("scraper.runner.scrape_page", return_value=products_v1):
         run_site(cfg, conn)
 
-    # Second run: 500 SEK — exactly 1 SEK delta, price_change expected
+    # Second run: 500 SEK — exactly 1 SEK delta, a price event is expected
     products_v2 = [{"raw_name": "Box", "price": 500.0,
                     "currency": "SEK", "in_stock": True, "product_url": ""}]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
@@ -641,7 +602,7 @@ def test_run_site_price_change_threshold_fires_at_1_for_sek(conn):
         run_site(cfg, conn)
 
     types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
-    assert "price_change" in types
+    assert "price_rise" in types
 
 
 def test_run_site_back_in_stock_not_emitted_without_stock_mode(conn):
@@ -805,7 +766,7 @@ def test_run_site_source_urls_scrapes_every_url(conn):
 
     assert fetched == ["https://example.fi/a", "https://example.fi/b"]
     names = [r["raw_name"] for r in conn.execute(
-        "SELECT raw_name FROM price_readings ORDER BY raw_name")]
+        "SELECT raw_name FROM listings ORDER BY raw_name")]
     assert names == ["A1", "A2", "B1"]
 
 
@@ -819,7 +780,7 @@ def test_run_site_source_urls_share_one_site_row(conn):
     sites = conn.execute("SELECT id, url, name FROM sites").fetchall()
     assert len(sites) == 1
     assert sites[0]["url"] == "https://example.fi/a"  # first URL identifies the site
-    site_ids = {r["site_id"] for r in conn.execute("SELECT site_id FROM price_readings")}
+    site_ids = {r["site_id"] for r in conn.execute("SELECT site_id FROM listings")}
     assert site_ids == {sites[0]["id"]}
 
 
@@ -838,7 +799,7 @@ def test_run_site_source_urls_paginate_each_url_independently(conn):
         "https://example.fi/b",
         "https://example.fi/b?page=2",
     ]
-    assert conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0] == 6
+    assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 6
 
 
 def test_run_site_source_urls_empty_page_only_stops_that_url(conn):
@@ -857,7 +818,7 @@ def test_run_site_source_urls_empty_page_only_stops_that_url(conn):
         "https://example.fi/b?page=2",
     ]
     names = [r["raw_name"] for r in conn.execute(
-        "SELECT raw_name FROM price_readings ORDER BY raw_name")]
+        "SELECT raw_name FROM listings ORDER BY raw_name")]
     assert names == ["A1", "B1", "B2"]
 
 
@@ -868,8 +829,8 @@ def test_run_site_source_urls_currency_per_url(conn):
         "https://example.fi/b": _named_products("FI1"),
     }, conn)
 
-    currencies = {r["raw_name"]: r["currency"] for r in conn.execute(
-        "SELECT raw_name, currency FROM price_readings")}
+    currencies = {r["raw_name"]: r["latest_currency"] for r in conn.execute(
+        "SELECT raw_name, latest_currency FROM listings")}
     assert currencies == {"SE1": "SEK", "FI1": "EUR"}
 
 
@@ -906,19 +867,6 @@ def test_run_site_source_urls_duplicate_raw_name_upserts_one_listing(conn):
     # One new_listing event only, despite the two sightings
     events = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates")]
     assert events == ["new_listing"]
-
-
-def test_run_site_duplicate_raw_name_writes_one_price_reading(conn):
-    """A product listed in two categories must not double its price history."""
-    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
-    _run_with_pages(cfg, {
-        "https://example.fi/a": _named_products("Shared Box"),
-        "https://example.fi/b": _named_products("Shared Box", "B1"),
-    }, conn)
-
-    names = [r["raw_name"] for r in conn.execute(
-        "SELECT raw_name FROM price_readings ORDER BY raw_name")]
-    assert names == ["B1", "Shared Box"]
 
 
 def test_run_site_source_urls_health_success_when_any_url_yields_products(conn):
@@ -984,7 +932,7 @@ def test_run_site_404_on_later_page_ends_pagination_not_the_site(conn):
     site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
     assert site["consecutive_failures"] == 0
     assert site["last_error"] is None
-    assert conn.execute("SELECT COUNT(*) FROM price_readings").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 1
 
 
 def test_run_site_404_on_first_page_still_fails_the_url(conn):
@@ -1019,7 +967,7 @@ def test_run_site_404_on_later_page_keeps_other_source_urls(conn):
 
     site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
     assert site["consecutive_failures"] == 0
-    names = sorted(r[0] for r in conn.execute("SELECT raw_name FROM price_readings"))
+    names = sorted(r[0] for r in conn.execute("SELECT raw_name FROM listings"))
     assert names == ["A1", "B1"]
 
 

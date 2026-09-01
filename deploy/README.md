@@ -40,20 +40,25 @@ Then open a new shell (or `source ~/.bashrc`) and `git push` will work.
 
 > **Shared server.** The drafter app already runs on this server (port 8501, Caddy on port 80). The pokemon app runs on port 8502 and is reachable at `http://65.21.178.63/pokemon/` via a `handle /pokemon/*` block added to the existing Caddyfile, protected by Caddy `basicauth` (username `pokemon`, password given to the project owner out of band — never store it in this repo) — drafter's root route (`reverse_proxy localhost:8501`) is untouched.
 
-**Status: deployed and live** as of 2026-08-10. Schema updated 2026-08-11 to `cardmarket_products` + `name_mappings`. LLM mapping pass complete: 292 mapped, 279 null_mapped, 728 undecided (resolved via Mapping Review UI). Outstanding: Gmail credentials (`scripts/setup_email.py`) still need to be run interactively with real credentials.
+**Status: deployed and live** as of 2026-08-10. The database is the four tables of the tracker refocus: `sites`, `scrape_runs`, `listings`, `updates`. Mapping, the Cardmarket catalogue, thresholds, price history and the email digest are gone.
 
-**Schema v3 migration (run once on Hetzner after deploying this version):**
+**Moving the live database to the four-table schema:** `scripts/rebuild_db.py --source pokemon.db --target pokemon.db.new` builds a new database from the old one and prints per-table source and target counts. `init_db.py` cannot do this: it only creates missing tables and indexes, and refuses a database that predates the refocus. Run the rebuild mid-hour (cron scrapes at :00), check the counts, then swap:
 
 ```bash
 ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 '
-  cd /opt/pokemon
-  sudo -u pokemon git pull --ff-only
-  venv/bin/python init_db.py /opt/pokemon/pokemon.db
+  cd /opt/pokemon &&
+  sudo -u pokemon git pull --ff-only &&
+  venv/bin/python scripts/rebuild_db.py --source pokemon.db --target pokemon.db.new &&
+  mv pokemon.db pokemon.db.pre-refocus-$(date +%F) &&
+  mv pokemon.db.new pokemon.db &&
+  chown pokemon:pokemon pokemon.db &&
   systemctl restart pokemon-streamlit
 '
 ```
 
-`init_db.py` only creates missing tables and indexes, and refuses a database that predates the four-table refocus schema. Moving the live database to that schema is `scripts/rebuild_db.py`'s job — see the deploy note in [ticket 13](../.wayfinder/tickets/13-four-table-schema-rebuild.md).
+The `&&` chaining matters: without it a failed rebuild still renames the live database away and swaps in a partial file. The `chown` matters too — the rebuild runs as root, and the app and scraper run as `pokemon`, so a root-owned `pokemon.db` leaves them unable to write.
+
+The restart is required — the app caches its connection with `st.cache_resource`. The archived `pokemon.db.pre-refocus-*` file is where the old price readings live from then on; nothing reads them.
 
 > **Gotcha — don't rename `app/views/` back to `app/pages/`.** Streamlit auto-detects any folder literally named `pages/` sibling to the entrypoint as its own multi-page-app router, which registers each page as a standalone top-level route bypassing `main.py`'s custom router (the thing that sets up `st.session_state["conn"]`). Doing so silently breaks every page with a "No database connection." error. The folder is intentionally named `app/views/` for this reason.
 
@@ -121,13 +126,8 @@ python3 -m venv /opt/pokemon/venv
 
 ```bash
 cp /opt/pokemon/.env.example /opt/pokemon/.env
-# Edit DB_PATH, then run the email setup script:
-/opt/pokemon/venv/bin/python scripts/setup_email.py
+# Edit DB_PATH.
 ```
-
-The email setup script prompts for `GMAIL_USER`, `GMAIL_APP_PASSWORD`, and `DIGEST_TO`, sends a test email, then writes the values to `.env` without touching other keys.
-
-**Gmail App Password prerequisite:** 2-Factor Authentication must be enabled on the Google account. Generate an App Password at <https://myaccount.google.com/apppasswords> — Google shows it with spaces, the script strips them automatically.
 
 ### 4. Initialise the database
 
@@ -169,29 +169,19 @@ Generate the bcrypt hash with `caddy hash-password --plaintext '<password>'`. Do
 
 ### 7. Add the crontab
 
-```bash
-crontab -e
-```
-
-Paste from `deploy/crontab.txt` (all times UTC):
-
-```
-0 4,16 * * *  cd /opt/pokemon && venv/bin/python -m scraper >> logs/scraper.log 2>&1
-0 5 * * *     cd /opt/pokemon && venv/bin/python -m scraper.digest >> logs/digest.log 2>&1
-```
-
-### 8. Configure Gmail credentials
+The scraper cron belongs to the **`pokemon`** user, not root. `crontab -l` as root shows nothing.
 
 ```bash
-cd /opt/pokemon
-venv/bin/python scripts/setup_email.py
+crontab -e -u pokemon
+# or install the repo file verbatim:
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 'crontab -u pokemon -' < deploy/crontab.txt
 ```
 
-Skip for now if you don't have credentials yet — the scraper and Streamlit app work without email. The 05:00 UTC digest cron will fail silently until credentials are set.
+Contents (all times UTC):
 
-### 9. Run initial LLM mapping pass
-
-After the first scraper run, open a Claude Code session and paste the prompt from `copilot_prompts/llm_normalise.md`. It will SSH into the server, fetch all unmapped names, assess them against the Cardmarket catalogue, and write results directly to the server DB.
+```
+0 2-17 * * *  cd /opt/pokemon && venv/bin/python -m scraper >> logs/scraper.log 2>&1
+```
 
 ---
 
@@ -202,13 +192,10 @@ After the first scraper run, open a Claude Code session and paste the prompt fro
 | Restart pokemon app | `systemctl restart pokemon-streamlit` |
 | View app logs | `journalctl -u pokemon-streamlit -f` |
 | View scraper logs | `tail -f /opt/pokemon/logs/scraper.log` |
-| View digest logs | `tail -f /opt/pokemon/logs/digest.log` |
 | Pull latest code (direct SSH) | `ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 'cd /opt/pokemon && sudo -u pokemon git pull --ff-only && systemctl restart pokemon-streamlit'` |
 | Pull latest code (HTTP hook, from office network) | `curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/pull` then `.../restart` |
 | Run scraper manually | `cd /opt/pokemon && venv/bin/python -m scraper` |
-| Run digest manually | `cd /opt/pokemon && venv/bin/python -m scraper.digest` |
-| Re-run email setup | `cd /opt/pokemon && venv/bin/python scripts/setup_email.py` |
-| Run LLM mapping pass | Open Claude Code, paste `copilot_prompts/llm_normalise.md` |
+| Rebuild the DB from an older schema | `cd /opt/pokemon && venv/bin/python scripts/rebuild_db.py --source pokemon.db --target pokemon.db.new` |
 
 ---
 
@@ -218,10 +205,8 @@ After the first scraper run, open a Claude Code session and paste the prompt fro
 |---------|-------|
 | App not responding | `curl http://localhost:8502/_stcore/health` → should be `ok` |
 | Every page shows "No database connection." | Check the page-source folder is `app/views/`, not `app/pages/` — see the MPA gotcha above |
-| Digest not sending | `grep GMAIL /opt/pokemon/.env` — check credentials are not placeholders |
-| `KeyError: GMAIL_APP_PASSWORD` | Run `venv/bin/python scripts/setup_email.py` |
 | Scraper returns 0 products | Check `tail -20 /opt/pokemon/logs/scraper.log`; site may have changed selectors |
-| Products page empty or missing prices | Check that new raw names have been mapped — paste `copilot_prompts/llm_normalise.md` into Claude Code to run a mapping pass on the server |
+| App errors on a missing column | The database predates the four-table schema — run `scripts/rebuild_db.py` and swap the file |
 | Service not starting | `journalctl -u pokemon-streamlit -n 50` |
 
 ---
@@ -248,6 +233,4 @@ curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/restart
 - [ ] Run `init_db.py`
 - [ ] Install and start `pokemon-streamlit` systemd service
 - [ ] Add crontab entries
-- [ ] Run `scripts/setup_email.py` (can skip initially)
-- [ ] Let scraper run once, then run LLM mapping pass (see step 9)
 - [ ] Verify app at `http://localhost:8502/_stcore/health`

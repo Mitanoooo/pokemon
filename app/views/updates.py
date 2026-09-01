@@ -13,20 +13,14 @@ if conn is None:
 
 st.title("Updates")
 
-# Controls row
-col_toggle, col_mark_all, _ = st.columns([2, 2, 6])
-with col_toggle:
-    show_unmapped = st.toggle("Show unmapped", value=False)
-with col_mark_all:
-    if st.button("Mark all read"):
-        db.mark_all_updates_seen(conn)
-        st.rerun()
+if st.button("Mark all read"):
+    db.mark_all_updates_seen(conn)
+    st.rerun()
 
-mapped_only = not show_unmapped
-entries = db.get_updates(conn, mapped_only=mapped_only)
+entries = db.get_updates(conn)
 
 if not entries:
-    st.info("No updates to show." if mapped_only else "No updates yet.")
+    st.info("No updates yet.")
     st.stop()
 
 # Collect ids of entries the user marks read this render
@@ -34,18 +28,21 @@ ids_to_mark: list[int] = []
 
 _BADGE = {
     "new_listing": "🆕 New listing",
-    "price_change": "💰 Price change",
+    "new_preorder": "📦 Preorder",
+    "price_drop": "💰 Price drop",
+    "price_rise": "📈 Price rise",
     "back_in_stock": "✅ Back in stock",
 }
+_PRICE_EVENTS = {"price_drop", "price_rise"}
 
 for entry in entries:
     is_unread = entry["seen"] == 0
     style = "border-left: 4px solid #4CAF50; padding-left: 8px;" if is_unread else ""
-    product_label = entry["product_name"] or entry["raw_name"]
+    product_label = entry["raw_name"]
     badge = _BADGE.get(entry["event_type"], entry["event_type"])
     run_time = str(entry.get("run_started_at") or entry["created_at"] or "")[:16]
 
-    if entry["event_type"] == "price_change":
+    if entry["event_type"] in _PRICE_EVENTS:
         value_str = f"{entry['old_value']} → {entry['new_value']}"
     elif entry["event_type"] == "back_in_stock":
         value_str = "back in stock"

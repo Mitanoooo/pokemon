@@ -21,13 +21,10 @@ def get_conn() -> sqlite3.Connection:
 st.set_page_config(page_title="Pokemon Price Tracker", layout="wide")
 
 pages = {
-    "Products": "views/products.py",
     "Updates": "views/updates.py",
-    "Mapping Review": "views/mappings.py",
-    "Site Health": "views/site_health.py",
-    "Unknowns": "views/unknowns.py",
-    "Categories": "views/categories.py",
-    "Thresholds": "views/thresholds.py",
+    "By site": "views/sites.py",
+    "Search": "views/search.py",
+    "Site health": "views/site_health.py",
 }
 
 st.sidebar.title("Navigation")

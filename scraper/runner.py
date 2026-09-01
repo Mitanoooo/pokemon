@@ -48,17 +48,13 @@ def _null_price_count(products: list[dict]) -> int:
     return len([p for p in products if p.get("price") is None])
 
 
-def _latest_priced_sighting_per_name(products: list[dict]) -> list[dict]:
-    """One priced reading per raw_name, last sighting winning.
+def _priced_name_count(products: list[dict]) -> int:
+    """How many distinct raw_names this run saw with a parseable price.
 
-    A product listed in two categories (or on two pages) would otherwise write
-    the same price twice in one run and double its point in the price history.
+    Zero of them is what marks a site unhealthy, so a product listed in two
+    categories must not inflate the count.
     """
-    deduped: dict[str, dict] = {}
-    for p in products:
-        if p.get("price") is not None:
-            deduped[p["raw_name"]] = p
-    return list(deduped.values())
+    return len({p["raw_name"] for p in products if p.get("price") is not None})
 
 
 def _build_update_events(
@@ -66,7 +62,6 @@ def _build_update_events(
     run_id: int,
     products: list[dict],
     pre_state: dict,
-    post_state: dict,
     stock_mode: Optional[str],
 ) -> list[dict]:
     """Diff products seen this run against the pre-upsert state and return events."""
@@ -79,14 +74,12 @@ def _build_update_events(
     for raw_name, p in deduped.items():
         new_price = p.get("price")
         new_in_stock = p.get("in_stock")
-        product_id = post_state.get(raw_name, {}).get("product_id")
         old = pre_state.get(raw_name)
 
         base = {
             "run_id": run_id,
             "site_id": site_id,
             "raw_name": raw_name,
-            "product_id": product_id,
         }
 
         if old is None:
@@ -101,15 +94,18 @@ def _build_update_events(
             price_threshold = 1.0 if p.get("currency") == "SEK" else 0.01
             if (old_price is not None and new_price is not None
                     and abs(new_price - old_price) >= price_threshold):
+                # Direction is decided here rather than by a CAST in the UI
+                # query, so the updates(event_type, created_at) index can do
+                # the filtering.
                 events.append({
                     **base,
-                    "event_type": "price_change",
+                    "event_type": "price_drop" if new_price < old_price else "price_rise",
                     "old_value": str(old_price),
                     "new_value": str(new_price),
                 })
 
             if (stock_mode and stock_mode != "unknown"
-                    and old.get("latest_in_stock") == 0 and new_in_stock):
+                    and old.get("availability") == "out_of_stock" and new_in_stock):
                 events.append({
                     **base,
                     "event_type": "back_in_stock",
@@ -216,7 +212,7 @@ def _scrape_source_url(
 def run_site(
     config: dict, conn: sqlite3.Connection, run_id: Optional[int] = None
 ) -> None:
-    """Scrape one site and persist its listings and price readings.
+    """Scrape one site and persist its listings and the events they imply.
 
     A config may name one source URL ("source_url") or several ("source_urls");
     each is paginated independently and all of them feed the same site identity.
@@ -246,28 +242,26 @@ def run_site(
             all_products.extend(products)
             pages_fetched += pages
 
-        all_readings = _latest_priced_sighting_per_name(all_products)
+        priced = _priced_name_count(all_products)
 
         # Generate and persist update events for all products seen this run.
         if all_products:
-            post_state = db.get_listing_state(conn, site_id)
             events = _build_update_events(
-                site_id, run_id, all_products, pre_state, post_state, stock_mode
+                site_id, run_id, all_products, pre_state, stock_mode
             )
             if events:
                 db.write_updates(conn, events)
 
-        if not all_readings:
+        if not priced:
             msg = "0 products across all pages"
             logger.warning("%s: pages=%d products=0 — %s", site_name, pages_fetched, msg)
             db.update_site_health(conn, site_id, success=False, error_text=msg,
                                   null_price_count=_null_price_count(all_products))
             return
 
-        db.write_readings(conn, site_id, all_readings, run_id=run_id)
         db.update_site_health(conn, site_id, success=True,
                               null_price_count=_null_price_count(all_products))
-        logger.info("%s: pages=%d products=%d", site_name, pages_fetched, len(all_readings))
+        logger.info("%s: pages=%d products=%d", site_name, pages_fetched, priced)
 
     except Exception as exc:
         error_text = str(exc)
