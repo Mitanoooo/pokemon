@@ -9,6 +9,7 @@
     "https://karukortti.fi/category/japaninkieliset"
   ],
   "method": "css",
+  "decimal_separator": "dot",
   "availability": {
     "presence": {
       "selector": ".product-sold-out-label",
@@ -23,11 +24,11 @@
     "product_url": null
   },
   "pagination": {
-    "type": "none",
+    "type": "url_pattern",
     "selector": null,
-    "url_pattern": null,
-    "max_pages": 1
+    "url_pattern": "?page={page}",
+    "max_pages": 3
   },
   "confidence": "high",
-  "notes": "Custom Finnish shop platform (SumUp-hosted 'os-theme' storefront), server-rendered, requests+BS4 works cleanly. Only 8 products, 1 page — a <link rel=\"next\" href=\"...?page=2\"> is present in the <head> but ?page=2 returns zero products, so treat pagination as none. product_url has no separate selector needed: the product_container itself IS the <a> tag, its href attribute is the product link (absolute URL). in_stock is INVERTED — presence of .product-sold-out-label (text 'Loppuunmyyty') inside the container means OUT OF STOCK; absence means in stock. Confirmed working on both in-stock and sold-out products (6 of 8 products were sold out at time of check)."
+  "notes": "Custom Finnish shop platform (SumUp-hosted 'os-theme' storefront), server-rendered, requests+BS4 works cleanly. Only 8 products, 1 page — a <link rel=\"next\" href=\"...?page=2\"> is present in the <head> but ?page=2 returns zero products, so treat pagination as none. product_url has no separate selector needed: the product_container itself IS the <a> tag, its href attribute is the product link (absolute URL). in_stock is INVERTED — presence of .product-sold-out-label (text 'Loppuunmyyty') inside the container means OUT OF STOCK; absence means in stock. Confirmed working on both in-stock and sold-out products (6 of 8 products were sold out at time of check). 2026-09-02: the shop prints dot decimals ('€16.95'), and without decimal_separator the comma default read that as 1695 — every price under ~20 € was stored 100x too high and everything above it was rejected by the 2000 € ceiling, which is where the 47 null prices came from. Set decimal_separator to dot and multiplied the 21 stored prices back down by 100 in place, so the fix does not report itself as 21 price drops. Pagination also works now, contrary to the note above: '?page=2' returns 15 products on /category/boosterit and 14 on /category/japaninkieliset (16 on page 1 each), and the other four categories answer it with an empty page, which stops the walk. max_pages 3 for headroom."
 }
