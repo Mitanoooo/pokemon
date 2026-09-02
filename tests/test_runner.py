@@ -1265,3 +1265,196 @@ def test_run_site_non_404_error_on_later_page_still_fails(conn):
     site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
     assert site["consecutive_failures"] == 1
     assert "500" in (site["last_error"] or "")
+
+
+# ── run_site: absent_means (a listing URL filtered to items in stock) ─────────
+
+def _absent_cfg():
+    """A config whose source URL only ever lists items in stock."""
+    return _cfg(extra={"availability": {
+        "selector": ".badge",
+        "text_map": {"Ei saatavilla": "out_of_stock"},
+        "absent_means": "out_of_stock",
+        "default": "in_stock",
+    }})
+
+
+def _availability_by_name(conn) -> dict:
+    return {r["raw_name"]: r["availability"] for r in
+            conn.execute("SELECT raw_name, availability FROM listings")}
+
+
+def test_run_site_listing_gone_from_the_page_reads_out_of_stock(conn):
+    """The whole point of the flag: on a stock-filtered URL an item selling out
+    drops off the page instead of changing its badge."""
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A", "B"))
+    _run_once(cfg, conn, _named_products("A"))
+
+    assert _availability_by_name(conn) == {"A": "in_stock", "B": "out_of_stock"}
+
+
+def test_run_site_listing_gone_from_the_page_emits_nothing(conn):
+    """Going out of stock is not one of the four events, here as anywhere else."""
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A", "B"))
+    _run_once(cfg, conn, _named_products("A"))
+
+    assert _event_types(conn) == []
+
+
+def test_run_site_listing_back_on_the_page_emits_back_in_stock(conn):
+    """Without the sweep the row would still read in_stock and this event, the
+    one the shop is watched for, could never fire on this site."""
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A", "B"))
+    _run_once(cfg, conn, _named_products("A"))
+    _run_once(cfg, conn, _named_products("A", "B"))
+
+    rows = conn.execute("SELECT * FROM updates").fetchall()
+    assert len(rows) == 1
+    assert (rows[0]["raw_name"], rows[0]["event_type"], rows[0]["old_value"]) == (
+        "B", "back_in_stock", "out_of_stock")
+
+
+def test_run_site_absent_state_records_where_it_came_from(conn):
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A", "B"))
+    _run_once(cfg, conn, _named_products("A"))
+
+    row = conn.execute(
+        "SELECT * FROM listings WHERE raw_name = 'B'").fetchone()
+    assert row["availability_text"] == "(absent from listing)"
+
+
+def test_run_site_absent_listing_keeps_its_last_seen_at(conn):
+    """It was not seen. A moved last_seen_at would read as a fresh sighting."""
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A", "B"))
+    before = conn.execute(
+        "SELECT last_seen_at, last_run_id FROM listings WHERE raw_name='B'").fetchone()
+
+    _run_once(cfg, conn, _named_products("A"))
+
+    after = conn.execute(
+        "SELECT last_seen_at, last_run_id FROM listings WHERE raw_name='B'").fetchone()
+    assert tuple(after) == tuple(before)
+
+
+def test_run_site_without_absent_means_leaves_a_vanished_listing_alone(conn):
+    """The general rule the project settled on: a listing disappears for too many
+    reasons other than stock to read it as out of stock."""
+    cfg = _cfg()
+    _run_once(cfg, conn, _named_products("A", "B"))
+    _run_once(cfg, conn, _named_products("A"))
+
+    assert _availability_by_name(conn) == {"A": "in_stock", "B": "in_stock"}
+    assert _event_types(conn) == []
+
+
+def test_run_site_no_absent_sweep_when_a_page_failed(conn):
+    """A 500 on page 2 leaves page 2's items unseen but on the shelf."""
+    cfg = _paged_cfg(["https://example.fi/a"])
+    cfg["availability"] = _absent_cfg()["availability"]
+    _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1"),
+        "https://example.fi/a?page=2": _named_products("A2"),
+    }, conn)
+
+    def fake_fetch(url, **kwargs):
+        if url.endswith("?page=2"):
+            raise FetchError("HTTP 500 for " + url, 500)
+        return url
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page",
+               side_effect=lambda html, cfg_, **kw: _named_products("A1")), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    assert _availability_by_name(conn) == {"A1": "in_stock", "A2": "in_stock"}
+
+
+def test_run_site_no_absent_sweep_when_one_of_the_source_urls_failed(conn):
+    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
+    cfg["availability"] = _absent_cfg()["availability"]
+    _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1"),
+        "https://example.fi/b": _named_products("B1"),
+    }, conn)
+
+    def fake_fetch(url, **kwargs):
+        if url.endswith("/b"):
+            raise FetchError("HTTP 500")
+        return url
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page",
+               side_effect=lambda html, cfg_, **kw: _named_products("A1")), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    assert _availability_by_name(conn) == {"A1": "in_stock", "B1": "in_stock"}
+
+
+def test_run_site_no_absent_sweep_when_the_page_returned_nothing(conn):
+    """0 products is a broken selector, not a shop with an empty shelf."""
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A", "B"))
+    _run_once(cfg, conn, [])
+
+    assert _availability_by_name(conn) == {"A": "in_stock", "B": "in_stock"}
+
+
+def test_run_site_no_absent_sweep_when_most_of_the_catalogue_is_missing(conn, caplog):
+    """A truncated render must not queue the whole shop up as back_in_stock."""
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A", "B", "C", "D"))
+    _run_once(cfg, conn, _named_products("A"))
+
+    assert set(_availability_by_name(conn).values()) == {"in_stock"}
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any("too many to read as out_of_stock" in m for m in warnings), warnings
+
+
+def test_run_site_absent_sweep_runs_at_exactly_the_share_cap(conn):
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A", "B", "C", "D"))
+    _run_once(cfg, conn, _named_products("A", "B"))
+
+    assert _availability_by_name(conn) == {
+        "A": "in_stock", "B": "in_stock", "C": "out_of_stock", "D": "out_of_stock"}
+
+
+def test_run_site_absent_sweep_ignores_rows_already_in_that_state(conn):
+    """Nothing to write, so nothing is written — and no second event either."""
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A", "B"))
+    _run_once(cfg, conn, _named_products("A"))
+    _run_once(cfg, conn, _named_products("A"))
+
+    assert _availability_by_name(conn) == {"A": "in_stock", "B": "out_of_stock"}
+    assert _event_types(conn) == []
+
+
+def test_run_site_absent_means_shows_up_in_availability_mode(conn):
+    cfg = _absent_cfg()
+    _run_once(cfg, conn, _named_products("A"))
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["availability_mode"] == "text_map,absent"
+
+
+def test_run_site_unusable_absent_means_is_ignored_not_fatal(conn, caplog):
+    """A typo would otherwise hit the availability CHECK constraint and be
+    reported as the whole site failing to scrape."""
+    cfg = _absent_cfg()
+    cfg["availability"]["absent_means"] = "outofstock"
+    _run_once(cfg, conn, _named_products("A", "B"))
+    _run_once(cfg, conn, _named_products("A"))
+
+    assert _availability_by_name(conn) == {"A": "in_stock", "B": "in_stock"}
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 0
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert any("absent_means" in m for m in warnings), warnings

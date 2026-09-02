@@ -16,7 +16,7 @@ from scraper.paginator import (
     source_urls,
     tagged_source_urls,
 )
-from scraper.parser import availability_forms, scrape_page
+from scraper.parser import AVAILABILITY_STATES, availability_forms, scrape_page
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +72,90 @@ _TRANSITION_EVENTS = {
     ("out_of_stock", "in_stock"): "back_in_stock",
     ("preorder", "in_stock"): "back_in_stock",
 }
+
+
+# What availability_text records for a state that came from a listing's absence
+# rather than from anything the page said, in the style of "(preorder url)".
+ABSENT_AVAILABILITY_TEXT = "(absent from listing)"
+
+# Above this share of a site's listings, a sweep is likelier to be a truncated
+# page than a shop selling out between two hourly runs. Marking most of a
+# catalogue absent costs nothing on the way out (out-of-stock is not an event)
+# but fires the whole shop as back_in_stock the moment the page renders fully
+# again, so the state stays put instead and the run says so.
+MAX_ABSENT_SHARE = 0.5
+
+
+def _absent_state(config: dict) -> Optional[str]:
+    """The config's `absent_means` state, or None if it does not use one.
+
+    An unusable value is dropped here rather than at the availability CHECK
+    constraint, which would raise mid-run and report a config typo as a
+    site-wide scrape failure.
+    """
+    state = (config.get("availability") or {}).get("absent_means")
+    if state is None:
+        return None
+    if state not in AVAILABILITY_STATES:
+        logger.warning(
+            "%s: absent_means %r is not one of %s — ignoring it",
+            config.get("site_name", ""), state, AVAILABILITY_STATES,
+        )
+        return None
+    return state
+
+
+def _apply_absent_means(
+    conn: sqlite3.Connection,
+    config: dict,
+    site_id: int,
+    products: list[dict],
+    pre_state: dict,
+) -> int:
+    """Mark listings this run did not see with the config's `absent_means`.
+
+    For a source URL filtered to items in stock: an item selling out drops off
+    the page instead of changing its badge, so a listing that stops appearing is
+    the only out-of-stock signal the shop gives, and without this the row keeps
+    its last state for ever and can never come back_in_stock.
+
+    Only for the configs that opt in. Everywhere else a listing disappears for
+    too many other reasons (renamed, recategorised, delisted) to read it as out
+    of stock, which is why the project ruled that out in general.
+
+    The caller must only call this when every source URL of the site came back:
+    a fetch that failed or a page that rendered short would otherwise sweep
+    listings that are on the page and in stock.
+    """
+    absent_state = _absent_state(config)
+    if not absent_state or not products or not pre_state:
+        return 0
+
+    seen = {p["raw_name"] for p in products}
+    absent = [
+        name for name, old in pre_state.items()
+        if name not in seen and old.get("availability") != absent_state
+    ]
+    if not absent:
+        return 0
+
+    site_name = config.get("site_name", "")
+    if len(absent) > MAX_ABSENT_SHARE * len(pre_state):
+        logger.warning(
+            "%s: %d of %d listing(s) missing from the page — too many to read as "
+            "%s, leaving their availability alone",
+            site_name, len(absent), len(pre_state), absent_state,
+        )
+        return 0
+
+    changed = db.set_listing_availability(
+        conn, site_id, absent, absent_state, ABSENT_AVAILABILITY_TEXT
+    )
+    logger.info(
+        "%s: %d listing(s) no longer on the page — marked %s",
+        site_name, changed, absent_state,
+    )
+    return changed
 
 
 def _build_update_events(
@@ -297,6 +381,10 @@ def run_site(
                     conn, config, site_id, run_id, source_url, sleep_first=i > 0,
                     products_seen=all_products, from_preorder_url=is_preorder,
                 )
+            # Every source URL of the site came back, so a listing missing from
+            # all of them really is missing. This has to stay inside the try and
+            # out of the finally: a partial scrape must not sweep anything.
+            _apply_absent_means(conn, config, site_id, all_products, pre_state)
         finally:
             # An empty pre_state is a brand-new site: record its catalogue silently.
             if all_products and pre_state:

@@ -149,6 +149,36 @@ def upsert_listing(
     conn.commit()
 
 
+def set_listing_availability(
+    conn: sqlite3.Connection,
+    site_id: int,
+    raw_names: Iterable[str],
+    availability: str,
+    availability_text: Optional[str] = None,
+) -> int:
+    """Force an availability state onto named listings of one site.
+
+    For listings a run did *not* see: runner uses it to apply a config's
+    `absent_means`. last_seen_at and last_run_id deliberately stay put — the
+    listing was not seen, and moving them would make a shop that dropped an item
+    months ago look freshly scraped on the By site page.
+
+    Returns the number of rows changed.
+    """
+    names = list(raw_names)
+    if not names:
+        return 0
+    cur = conn.executemany(
+        """
+        UPDATE listings SET availability = ?, availability_text = ?
+        WHERE site_id = ? AND raw_name = ?
+        """,
+        [(availability, availability_text, site_id, name) for name in names],
+    )
+    conn.commit()
+    return cur.rowcount
+
+
 # ── listing queries (the app reads these, the scraper does not) ───────────────
 
 def get_sites(conn: sqlite3.Connection) -> list[dict]:

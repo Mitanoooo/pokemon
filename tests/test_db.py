@@ -269,6 +269,50 @@ def test_upsert_listing_from_preorder_url_is_overwritten_not_coalesced(conn, sit
     assert conn.execute("SELECT from_preorder_url FROM listings").fetchone()[0] == 0
 
 
+# ── set_listing_availability ──────────────────────────────────────────────────
+
+def test_set_listing_availability_overwrites_state_and_text(conn, site_id):
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR", "in_stock", "Varastossa")
+
+    changed = db.set_listing_availability(conn, site_id, ["Box"], "out_of_stock", "(gone)")
+
+    row = conn.execute("SELECT * FROM listings").fetchone()
+    assert (changed, row["availability"], row["availability_text"]) == (
+        1, "out_of_stock", "(gone)")
+
+
+def test_set_listing_availability_leaves_the_sighting_columns_alone(conn, site_id):
+    """The listing was not seen: last_seen_at, last_run_id and the price stay."""
+    run_id = db.start_run(conn)
+    db.upsert_listing(conn, site_id, "Box", "https://example.fi/b", 99.90, "EUR",
+                      "in_stock", run_id=run_id)
+    before = dict(conn.execute("SELECT * FROM listings").fetchone())
+
+    db.set_listing_availability(conn, site_id, ["Box"], "out_of_stock", "(gone)")
+
+    after = dict(conn.execute("SELECT * FROM listings").fetchone())
+    changed = {k for k in before if before[k] != after[k]}
+    assert changed == {"availability", "availability_text"}
+
+
+def test_set_listing_availability_only_touches_the_named_site(conn, site_id, other_site_id):
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR", "in_stock")
+    db.upsert_listing(conn, other_site_id, "Box", "", 99.90, "EUR", "in_stock")
+
+    db.set_listing_availability(conn, site_id, ["Box"], "out_of_stock")
+
+    states = {r["site_id"]: r["availability"] for r in
+              conn.execute("SELECT site_id, availability FROM listings")}
+    assert states == {site_id: "out_of_stock", other_site_id: "in_stock"}
+
+
+def test_set_listing_availability_with_no_names_is_a_no_op(conn, site_id):
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR", "in_stock")
+
+    assert db.set_listing_availability(conn, site_id, [], "out_of_stock") == 0
+    assert conn.execute("SELECT availability FROM listings").fetchone()[0] == "in_stock"
+
+
 # ── get_listing_state ─────────────────────────────────────────────────────────
 
 def test_get_listing_state_returns_rows_keyed_by_raw_name(conn, site_id):

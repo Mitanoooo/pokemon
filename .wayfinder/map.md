@@ -45,6 +45,14 @@ One thing the deploy turned up, unspecified and unfixed: `sites` rows are keyed 
 - A `price_change` row whose old and new values are equal is skipped by the rebuild along with the unparseable ones, since there is no direction to record.
 - `unknown` → `preorder` emits nothing, like every other transition touching `unknown`. It drops a real preorder signal on the four sites whose availability block defaults to `unknown`; revisit once there is real data on how often a badge goes unreadable and back.
 - A `back_in_stock` row carries the previous availability in `old_value`; every other event type puts the price in `new_value` and leaves `old_value` either empty or the old price.
+- A listing disappearing from a page still means nothing by default, but a config can now say
+  `availability.absent_means` and have the runner read its absence as a state. It is for a source
+  URL filtered to items in stock, where selling out drops an item off the page instead of changing
+  its badge, so absence is the only stock signal the shop gives. Prisma is the one site using it:
+  its "Ei saatavilla" badge undercounts, since one copy in one store keeps the badge off a product
+  nobody can buy. Guards: only when every source URL of the run came back, only when the run saw
+  products, and never for more than half a site's listings at once (a truncated page would
+  otherwise queue the whole shop up as `back_in_stock`).
 - Name search is SQLite `LIKE` with `%` and `_` escaped: case-insensitive for ASCII only. Matching `É` against `é` would need an ICU build, and no listing name has needed it yet.
 
 Two earlier initiatives are closed and superseded:
@@ -62,5 +70,6 @@ Two earlier initiatives are closed and superseded:
 - Price history, charts, thresholds, alerts
 - Email digest (removable now, rebuildable later on `updates`)
 - Preorder release-date parsing out of badge text
-- Treating a disappearing listing as out of stock (ruled out previously for false positives)
+- Treating a disappearing listing as out of stock, except where a config opts in with
+  `absent_means` (ruled out as a default for false positives)
 - Per-user read state

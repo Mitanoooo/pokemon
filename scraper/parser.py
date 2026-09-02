@@ -18,6 +18,13 @@ AVAILABILITY_STATES = ("in_stock", "out_of_stock", "preorder", "unknown")
 # page fetched from a preorder URL beats all of them (see detect_availability).
 AVAILABILITY_FORMS = ("text_map", "presence", "container_class_map", "attribute")
 
+# Not a form: `absent_means` reads nothing off the page. It says what a listing
+# vanishing from a stock-filtered listing URL means, and the runner applies it
+# after a run rather than detect_availability doing it per container. It still
+# belongs in availability_mode, so By site says where a shop's out-of-stock
+# readings come from.
+AVAILABILITY_ABSENT_MODE = "absent"
+
 # availability_text is stored so a misread badge can be re-diagnosed without
 # re-scraping. 120 chars is enough for "Ennakkotilaus 12.9.2026" and its
 # neighbours without turning listings into a text dump.
@@ -55,9 +62,17 @@ def availability_forms(config: dict) -> Optional[str]:
     Written to sites.availability_mode. None means the site tracks nothing,
     which the app reports as "not tracked" rather than as all-unknown. A block
     holding only a `default` tracks nothing either, so it reads as None too.
+
+    `absent_means` is appended as "absent" after the page-reading forms. It is
+    not one of them, but a site that only knows an item is gone because it fell
+    off the page does track availability, and the mode column is where that
+    shows.
     """
     block = config.get("availability") or {}
-    return ",".join(f for f in AVAILABILITY_FORMS if block.get(f)) or None
+    modes = [f for f in AVAILABILITY_FORMS if block.get(f)]
+    if block.get("absent_means"):
+        modes.append(AVAILABILITY_ABSENT_MODE)
+    return ",".join(modes) or None
 
 
 def detect_availability(
