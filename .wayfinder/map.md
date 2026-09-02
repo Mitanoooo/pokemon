@@ -25,25 +25,25 @@ State at the start of this initiative: 2,738 distinct raw names, 450 of them unm
 
 ## Open tickets (frontier → blocked)
 
-- [16 — Availability probe CLI](tickets/16-availability-probe-cli.md) *(frontier)*
-- [17 — Preorder URL audit across all 40 sites](tickets/17-preorder-url-audit.md) *(frontier)*
-- [18 — Availability pin-down pass across all 40 sites](tickets/18-availability-pin-down-pass.md) — blocked by 16
-- [20 — App: Updates, By site, Search](tickets/20-app-updates-sites-search.md) *(frontier)*
-
-Tickets 17 and 18 are the ones that make preorder and restock detection real; the rest is scaffolding around them. Both are per-site audit passes and cannot be fully automated.
+None. Every ticket of this initiative is done. What is left is deployment: the app changes of ticket 20 are not on the server yet.
 
 ## Done
 
 - [13 — Four-table schema and DB rebuild script](tickets/13-four-table-schema-rebuild.md) — `schema.sql` is the four tables plus four indexes; `scripts/rebuild_db.py` builds the new DB from the old one. Not deployed yet: it ships with 14.
 - [14 — Strip mapping, products, thresholds and email](tickets/14-strip-mapping-products-thresholds.md) — mapping, catalogue, thresholds, price history and email are gone from the code. Two bridges landed here rather than in 15/19 because 13's schema forced them: `availability` in place of `latest_in_stock`, and `price_drop` / `price_rise` in place of `price_change`. The digest line is out of the server's crontab too (it belongs to the `pokemon` user, not root).
 - [15 — Availability config shape and parser](tickets/15-availability-config-and-parser.md) — `detect_availability` returns the four states plus the raw text; 23 configs migrated mechanically, 17 left untracked. Replaying the 10 page fixtures gives zero readings different from the old parser, so nothing is fixed yet and nothing is broken: ticket 18 is where the readings get better.
+- [16 — Availability probe CLI](tickets/16-availability-probe-cli.md) — `python -m scraper.probe <config>` dumps a site's badge texts, classes and data attributes with counts, plus the split the current config produces. `--all` prints one coverage line per site, which is how 18 was verified.
+- [17 — Preorder URL audit across all 40 sites](tickets/17-preorder-url-audit.md) — 7 of 40 shops have a preorder page whose contents are mostly Pokémon; those went into `preorder_urls`. The audit also moved the `from_preorder_url` check ahead of the badge forms, since every added URL badges its items as plain in-stock or sold-out.
+- [18 — Availability pin-down pass across all 40 sites](tickets/18-availability-pin-down-pass.md) — 27 of the 29 enabled configs now carry an availability block checked against live HTML; kevinshobbyshop (HTTP 403) and karkkainen (no signal on the listing) are the exceptions.
 - [19 — Update events rework](tickets/19-update-events-rework.md) — `_build_update_events` writes the four signals; a first run is silent; no transition fires from or to `unknown`, so untracked sites need no guard of their own. A fetch failure mid-pagination no longer discards the events of the pages that did land.
+- [20 — App: Updates, By site, Search](tickets/20-app-updates-sites-search.md) — three pages of `st.dataframe`, no per-row widgets, under 85 ms each against server-sized data. Read state is one "Mark all read" button and an unread count. Seven new `db.py` query functions; shared page helpers in `app/ui.py`. Not deployed yet.
 
 ## Decisions so far
 
 - A `price_change` row whose old and new values are equal is skipped by the rebuild along with the unparseable ones, since there is no direction to record.
 - `unknown` → `preorder` emits nothing, like every other transition touching `unknown`. It drops a real preorder signal on the four sites whose availability block defaults to `unknown`; revisit once there is real data on how often a badge goes unreadable and back.
 - A `back_in_stock` row carries the previous availability in `old_value`; every other event type puts the price in `new_value` and leaves `old_value` either empty or the old price.
+- Name search is SQLite `LIKE` with `%` and `_` escaped: case-insensitive for ASCII only. Matching `É` against `é` would need an ICU build, and no listing name has needed it yet.
 
 Two earlier initiatives are closed and superseded:
 - **Normalisation overhaul** (tickets 01–05) and **accuracy overhaul** (tickets 06–12) built the mapping pipeline that ticket 14 now deletes. Their specs stay in `.wayfinder/` as history: [accuracy overhaul](spec-accuracy-overhaul.md), [interface improvements](spec-interface-improvements.md). The ticket files were removed from the working tree; they are in git history at `90ce2e5`.

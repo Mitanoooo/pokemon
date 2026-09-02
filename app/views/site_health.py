@@ -5,12 +5,10 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from app import ui
 from scraper import db
 
-conn = st.session_state.get("conn")
-if conn is None:
-    st.error("No database connection.")
-    st.stop()
+conn = ui.connection()
 
 st.title("Site Health")
 
@@ -30,7 +28,7 @@ if not broken.empty:
     st.subheader("Broken Sites")
     st.dataframe(
         broken.style.map(lambda _: "background-color: #ffcccc"),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -38,4 +36,4 @@ st.subheader("Healthy Sites")
 if healthy.empty:
     st.info("No healthy sites.")
 else:
-    st.dataframe(healthy, use_container_width=True, hide_index=True)
+    st.dataframe(healthy, width="stretch", hide_index=True)

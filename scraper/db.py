@@ -1,10 +1,42 @@
 import sqlite3
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterable, Optional, Sequence, Union
+
+TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(timezone.utc).strftime(TIMESTAMP_FORMAT)
+
+
+def _as_timestamp(value: Union[str, datetime, None]) -> Optional[str]:
+    """Normalise a window bound to the string form the tables store."""
+    if isinstance(value, datetime):
+        return value.strftime(TIMESTAMP_FORMAT)
+    return value
+
+
+def _name_clauses(
+    column: str, text: Union[str, Sequence[str], None]
+) -> tuple[list[str], list[str]]:
+    """Build one ANDed LIKE clause per whitespace-separated term, with its params.
+
+    `%` and `_` are escaped, so a term the operator types is matched literally
+    instead of turning into a wildcard that returns the whole catalogue. LIKE
+    ignores case for ASCII, which is as far as SQLite goes without an ICU build.
+    """
+    if text is None:
+        words = []
+    elif isinstance(text, str):
+        words = text.split()
+    else:
+        words = [word for term in text for word in term.split()]
+
+    patterns = []
+    for word in words:
+        escaped = word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        patterns.append(f"%{escaped}%")
+    return [f"{column} LIKE ? ESCAPE '\\'" for _ in patterns], patterns
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
@@ -117,6 +149,120 @@ def upsert_listing(
     conn.commit()
 
 
+# ── listing queries (the app reads these, the scraper does not) ───────────────
+
+def get_sites(conn: sqlite3.Connection) -> list[dict]:
+    """Return every site as id and name, name-ordered, for a filter widget.
+
+    get_site_overview would answer this too, but it groups the whole listings
+    table to do it, and the Updates page needs nothing but the names.
+    """
+    rows = conn.execute("SELECT id, name FROM sites ORDER BY name").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_site_listings(
+    conn: sqlite3.Connection,
+    site_id: int,
+    availability: Optional[str] = None,
+    term: Optional[str] = None,
+) -> list[dict]:
+    """Return one site's listings, name-ordered, optionally filtered.
+
+    `term` is split on whitespace and ANDed, like the Search page, so typing
+    "prismatic etb" narrows instead of finding nothing.
+    """
+    where = ["site_id = ?"]
+    params: list = [site_id]
+
+    if availability:
+        where.append("availability = ?")
+        params.append(availability)
+    name_clauses, patterns = _name_clauses("raw_name", term)
+    where += name_clauses
+    params += patterns
+
+    rows = conn.execute(
+        f"""
+        SELECT raw_name, product_url, latest_price, latest_currency,
+               availability, availability_text, first_seen_at, last_seen_at
+        FROM listings
+        WHERE {" AND ".join(where)}
+        ORDER BY raw_name
+        """,
+        params,
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def search_listings(
+    conn: sqlite3.Connection,
+    terms: Union[str, Sequence[str], None],
+    limit: int = 500,
+) -> list[dict]:
+    """Return listings across every site whose raw_name matches all `terms`.
+
+    `terms` is a list of words or a whole query string. No terms means no rows:
+    an empty search box should not dump 2,900 listings.
+
+    Rows are ordered by name before site, so the same product from several shops
+    lands next to itself and the cap trims names rather than dropping whole
+    shops out of the count-by-site summary.
+    """
+    name_clauses, patterns = _name_clauses("l.raw_name", terms)
+    if not name_clauses:
+        return []
+
+    rows = conn.execute(
+        f"""
+        SELECT l.site_id, s.name AS site_name, l.raw_name, l.product_url,
+               l.latest_price, l.latest_currency, l.availability, l.last_seen_at
+        FROM listings l
+        LEFT JOIN sites s ON s.id = l.site_id
+        WHERE {" AND ".join(name_clauses)}
+        ORDER BY l.raw_name, s.name
+        LIMIT ?
+        """,
+        [*patterns, limit],
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_site_overview(conn: sqlite3.Connection) -> list[dict]:
+    """Return one row per site: listing counts by availability plus health.
+
+    `availability_mode` is NULL for a site whose config has no availability
+    block; the By site page renders that as "not tracked" so a gap reads
+    differently from a failure. `unknown_share` is None for a site with no
+    listings, because 0/0 is not 0% coverage, it is no data.
+    """
+    rows = conn.execute(
+        """
+        SELECT s.id, s.name, s.availability_mode, s.last_scraped_at,
+               s.consecutive_failures, s.last_error,
+               COUNT(l.raw_name) AS listing_count,
+               -- COUNT, not SUM: a site with no listings at all would make SUM
+               -- NULL, and every count here should read 0 instead.
+               COUNT(CASE WHEN l.availability = 'in_stock' THEN 1 END) AS in_stock,
+               COUNT(CASE WHEN l.availability = 'out_of_stock' THEN 1 END) AS out_of_stock,
+               COUNT(CASE WHEN l.availability = 'preorder' THEN 1 END) AS preorder,
+               COUNT(CASE WHEN l.availability = 'unknown' THEN 1 END) AS unknown
+        FROM sites s
+        LEFT JOIN listings l ON l.site_id = s.id
+        GROUP BY s.id
+        ORDER BY s.name
+        """
+    ).fetchall()
+
+    overview = []
+    for row in rows:
+        site = dict(row)
+        total = site["listing_count"]
+        site["unknown_share"] = site["unknown"] / total if total else None
+        overview.append(site)
+    return overview
+
+
 # ── updates ───────────────────────────────────────────────────────────────────
 
 def write_updates(conn: sqlite3.Connection, events: list[dict]) -> None:
@@ -149,42 +295,64 @@ def prune_updates(conn: sqlite3.Connection, days: int = 30) -> None:
     conn.commit()
 
 
-def get_updates(conn: sqlite3.Connection, limit: int = 500) -> list[dict]:
-    """Return the newest `limit` update rows, newest-first.
+def get_updates(
+    conn: sqlite3.Connection,
+    event_types: Iterable[str],
+    since: Union[str, datetime, None] = None,
+    site_id: Optional[int] = None,
+    limit: int = 1000,
+) -> list[dict]:
+    """Return update rows of the given event types since `since`, newest-first.
+
+    An empty `event_types` returns nothing: the page's multiselect cleared means
+    "show nothing", and expanding it to everything would be a surprise. `since`
+    is a 'YYYY-MM-DD HH:MM:SS' UTC string or a datetime; None drops the window.
 
     created_at has second granularity and one run writes its whole batch inside
-    a second or two, so id breaks the tie: which rows the cap keeps is at least
-    stable between two calls.
+    a second or two, so id breaks the tie and the cap keeps the same rows
+    between two calls.
 
-    The cap is a stopgap: the mapping filter that used to keep this page small
-    is gone, and the page renders a widget per row, so an unbounded 30-day
-    window would render thousands of them. Ticket 20 replaces this with a
-    filtered query over event type, window and site.
+    product_url and latest_currency come from the listing the event names, so a
+    price reads as 249 SEK rather than as an ambiguous number. The join is on the
+    listings primary key, and a listing that no longer exists leaves both NULL
+    rather than dropping the event.
     """
+    types = list(event_types)
+    if not types:
+        return []
+
+    where = [f"u.event_type IN ({','.join('?' * len(types))})"]
+    params: list = list(types)
+
+    since_str = _as_timestamp(since)
+    if since_str:
+        where.append("u.created_at >= ?")
+        params.append(since_str)
+    if site_id is not None:
+        where.append("u.site_id = ?")
+        params.append(site_id)
+    params.append(limit)
+
     rows = conn.execute(
-        """
+        f"""
         SELECT u.id, u.run_id, u.site_id, s.name AS site_name,
                u.raw_name, u.event_type, u.old_value, u.new_value,
-               u.created_at, u.seen,
-               sr.started_at AS run_started_at
+               u.created_at, u.seen, l.product_url, l.latest_currency
         FROM updates u
         LEFT JOIN sites s ON s.id = u.site_id
-        LEFT JOIN scrape_runs sr ON sr.id = u.run_id
+        LEFT JOIN listings l ON l.site_id = u.site_id AND l.raw_name = u.raw_name
+        WHERE {" AND ".join(where)}
         ORDER BY u.created_at DESC, u.id DESC
         LIMIT ?
         """,
-        (limit,),
+        params,
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def mark_updates_seen(conn: sqlite3.Connection, ids: list[int]) -> None:
-    """Set seen=1 for the given update ids."""
-    if not ids:
-        return
-    placeholders = ",".join("?" * len(ids))
-    conn.execute(f"UPDATE updates SET seen = 1 WHERE id IN ({placeholders})", ids)
-    conn.commit()
+def count_unread_updates(conn: sqlite3.Connection) -> int:
+    """Count update rows nobody has marked read. The app has no per-user state."""
+    return conn.execute("SELECT COUNT(*) FROM updates WHERE seen = 0").fetchone()[0]
 
 
 def mark_all_updates_seen(conn: sqlite3.Connection) -> None:

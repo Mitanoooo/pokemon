@@ -1,6 +1,9 @@
 import sqlite3
-import pytest
+from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
+
 from scraper import db
 
 SCHEMA = (Path(__file__).parent.parent / "schema.sql").read_text()
@@ -24,6 +27,23 @@ def conn():
 def site_id(conn):
     row = conn.execute("SELECT id FROM sites WHERE url='https://example.fi'").fetchone()
     return row["id"]
+
+
+@pytest.fixture
+def other_site_id(conn):
+    cur = conn.execute("INSERT INTO sites (url, name) VALUES ('https://other.fi', 'Other')")
+    conn.commit()
+    return cur.lastrowid
+
+
+def _insert_update(conn, site_id, raw_name, event_type="new_listing",
+                   created_at="2020-01-01 00:00:00", old_value=None, new_value=None):
+    conn.execute(
+        "INSERT INTO updates (site_id, raw_name, event_type, old_value, new_value, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (site_id, raw_name, event_type, old_value, new_value, created_at),
+    )
+    conn.commit()
 
 
 # ── update_site_health ───────────────────────────────────────────────────────
@@ -322,37 +342,53 @@ def test_prune_updates_deletes_old_rows_leaves_recent(conn, site_id):
 
 # ── get_updates ───────────────────────────────────────────────────────────────
 
-def test_get_updates_returns_every_row_newest_first(conn, site_id):
-    run_id = db.start_run(conn)
-    conn.execute(
-        "INSERT INTO updates (run_id, site_id, raw_name, event_type, created_at) "
-        "VALUES (?, ?, 'Older Box', 'new_listing', '2020-01-01 00:00:00')",
-        (run_id, site_id),
-    )
-    conn.execute(
-        "INSERT INTO updates (run_id, site_id, raw_name, event_type, created_at) "
-        "VALUES (?, ?, 'Newer Box', 'new_listing', '2020-06-01 00:00:00')",
-        (run_id, site_id),
-    )
-    conn.commit()
+def test_get_updates_returns_matching_rows_newest_first(conn, site_id):
+    _insert_update(conn, site_id, "Older Box", created_at="2020-01-01 00:00:00")
+    _insert_update(conn, site_id, "Newer Box", created_at="2020-06-01 00:00:00")
 
-    results = db.get_updates(conn)
+    results = db.get_updates(conn, ["new_listing"], "2019-01-01 00:00:00")
     assert [r["raw_name"] for r in results] == ["Newer Box", "Older Box"]
     assert results[0]["site_name"] == "Example"
 
 
-def test_get_updates_caps_at_the_limit_keeping_the_newest(conn, site_id):
-    """The page renders a widget per row, so the feed must not be unbounded."""
-    run_id = db.start_run(conn)
-    for day in range(1, 6):
-        conn.execute(
-            "INSERT INTO updates (run_id, site_id, raw_name, event_type, created_at) "
-            f"VALUES (?, ?, 'Box {day}', 'new_listing', '2020-01-0{day} 00:00:00')",
-            (run_id, site_id),
-        )
-    conn.commit()
+def test_get_updates_filters_by_event_type(conn, site_id):
+    _insert_update(conn, site_id, "Dropped", "price_drop")
+    _insert_update(conn, site_id, "Risen", "price_rise")
+    _insert_update(conn, site_id, "Fresh", "new_listing")
 
-    results = db.get_updates(conn, limit=2)
+    results = db.get_updates(conn, ["price_drop", "new_listing"], "2019-01-01 00:00:00")
+    assert sorted(r["raw_name"] for r in results) == ["Dropped", "Fresh"]
+
+
+def test_get_updates_with_no_event_types_returns_nothing(conn, site_id):
+    """An empty multiselect means "show nothing", not "show everything"."""
+    _insert_update(conn, site_id, "Fresh")
+
+    assert db.get_updates(conn, [], "2019-01-01 00:00:00") == []
+
+
+def test_get_updates_excludes_rows_older_than_the_window(conn, site_id):
+    _insert_update(conn, site_id, "Ancient", created_at="2020-01-01 00:00:00")
+    _insert_update(conn, site_id, "Recent", created_at="2020-06-01 00:00:00")
+
+    results = db.get_updates(conn, ["new_listing"], "2020-03-01 00:00:00")
+    assert [r["raw_name"] for r in results] == ["Recent"]
+
+
+def test_get_updates_filters_by_site(conn, site_id, other_site_id):
+    _insert_update(conn, site_id, "Mine")
+    _insert_update(conn, other_site_id, "Theirs")
+
+    results = db.get_updates(conn, ["new_listing"], "2019-01-01 00:00:00", site_id=other_site_id)
+    assert [r["raw_name"] for r in results] == ["Theirs"]
+    assert results[0]["site_name"] == "Other"
+
+
+def test_get_updates_caps_at_the_limit_keeping_the_newest(conn, site_id):
+    for day in range(1, 6):
+        _insert_update(conn, site_id, f"Box {day}", created_at=f"2020-01-0{day} 00:00:00")
+
+    results = db.get_updates(conn, ["new_listing"], "2019-01-01 00:00:00", limit=2)
     assert [r["raw_name"] for r in results] == ["Box 5", "Box 4"]
 
 
@@ -362,40 +398,238 @@ def test_get_updates_breaks_a_same_second_tie_by_id(conn, site_id):
     Without the tiebreaker, which rows survive `limit` is up to SQLite and the
     rest stay unreachable until the 30-day prune.
     """
-    run_id = db.start_run(conn)
     for n in range(1, 6):
-        conn.execute(
-            "INSERT INTO updates (run_id, site_id, raw_name, event_type, created_at) "
-            "VALUES (?, ?, ?, 'new_listing', '2020-01-01 00:00:00')",
-            (run_id, site_id, f"Box {n}"),
-        )
-    conn.commit()
+        _insert_update(conn, site_id, f"Box {n}", created_at="2020-01-01 00:00:00")
 
-    results = db.get_updates(conn, limit=2)
+    results = db.get_updates(conn, ["new_listing"], "2019-01-01 00:00:00", limit=2)
     assert [r["raw_name"] for r in results] == ["Box 5", "Box 4"]
 
 
-# ── mark_updates_seen ─────────────────────────────────────────────────────────
+def test_get_updates_carries_the_listing_url_so_a_row_is_one_click(conn, site_id):
+    db.upsert_listing(conn, site_id, "Box", "https://example.fi/p/box", 9.9, "EUR", "in_stock")
+    _insert_update(conn, site_id, "Box", new_value="9.9")
 
-def test_mark_updates_seen_sets_seen_for_given_ids_only(conn, site_id):
-    run_id = db.start_run(conn)
-    conn.execute(
-        "INSERT INTO updates (run_id, site_id, raw_name, event_type) VALUES (?, ?, 'A', 'new_listing')",
-        (run_id, site_id),
-    )
-    conn.execute(
-        "INSERT INTO updates (run_id, site_id, raw_name, event_type) VALUES (?, ?, 'B', 'new_listing')",
-        (run_id, site_id),
-    )
+    results = db.get_updates(conn, ["new_listing"], "2019-01-01 00:00:00")
+    assert results[0]["product_url"] == "https://example.fi/p/box"
+
+
+def test_get_updates_carries_the_currency(conn, site_id):
+    """A price with no currency is ambiguous: one shop prices in SEK."""
+    db.upsert_listing(conn, site_id, "Box", "", 249.0, "SEK", "in_stock")
+    _insert_update(conn, site_id, "Box", "price_drop", old_value="299.0", new_value="249.0")
+
+    results = db.get_updates(conn, ["price_drop"], "2019-01-01 00:00:00")
+    assert results[0]["latest_currency"] == "SEK"
+
+
+def test_get_updates_keeps_a_row_whose_listing_is_gone(conn, site_id):
+    """An event outlives nothing here, but the join must not drop it either."""
+    _insert_update(conn, site_id, "Vanished")
+
+    results = db.get_updates(conn, ["new_listing"], "2019-01-01 00:00:00")
+    assert [r["raw_name"] for r in results] == ["Vanished"]
+    assert results[0]["product_url"] is None
+
+
+def test_get_updates_accepts_a_datetime_window(conn, site_id):
+    _insert_update(conn, site_id, "Ancient", created_at="2020-01-01 00:00:00")
+    _insert_update(conn, site_id, "Recent", created_at="2020-06-01 00:00:00")
+
+    since = datetime(2020, 3, 1, tzinfo=timezone.utc)
+    results = db.get_updates(conn, ["new_listing"], since)
+    assert [r["raw_name"] for r in results] == ["Recent"]
+
+
+# ── count_unread_updates ──────────────────────────────────────────────────────
+
+def test_count_unread_updates_counts_only_unseen_rows(conn, site_id):
+    _insert_update(conn, site_id, "A")
+    _insert_update(conn, site_id, "B")
+    conn.execute("UPDATE updates SET seen = 1 WHERE raw_name = 'A'")
     conn.commit()
 
-    id_a = conn.execute("SELECT id FROM updates WHERE raw_name='A'").fetchone()["id"]
-    db.mark_updates_seen(conn, [id_a])
+    assert db.count_unread_updates(conn) == 1
 
-    rows = {r["raw_name"]: r["seen"] for r in conn.execute("SELECT raw_name, seen FROM updates").fetchall()}
-    assert rows["A"] == 1
-    assert rows["B"] == 0
 
+# ── search_listings ───────────────────────────────────────────────────────────
+
+def test_search_listings_ands_every_term(conn, site_id):
+    db.upsert_listing(conn, site_id, "Prismatic Evolutions ETB", "", 54.9, "EUR", "in_stock")
+    db.upsert_listing(conn, site_id, "Prismatic Evolutions Booster Bundle", "", 29.9, "EUR", "in_stock")
+    db.upsert_listing(conn, site_id, "Surging Sparks ETB", "", 49.9, "EUR", "in_stock")
+
+    results = db.search_listings(conn, ["prismatic", "etb"])
+    assert [r["raw_name"] for r in results] == ["Prismatic Evolutions ETB"]
+
+
+def test_search_listings_ignores_case(conn, site_id):
+    db.upsert_listing(conn, site_id, "Prismatic Evolutions ETB", "", 54.9, "EUR", "in_stock")
+
+    assert len(db.search_listings(conn, ["PRISMATIC"])) == 1
+    assert len(db.search_listings(conn, ["prismatic"])) == 1
+
+
+def test_search_listings_matches_terms_in_any_order(conn, site_id):
+    db.upsert_listing(conn, site_id, "Prismatic Evolutions ETB", "", 54.9, "EUR", "in_stock")
+
+    assert len(db.search_listings(conn, ["etb", "prismatic"])) == 1
+
+
+def test_search_listings_spans_sites_and_names_them(conn, site_id, other_site_id):
+    db.upsert_listing(conn, site_id, "Surging Sparks ETB", "https://example.fi/p/1",
+                      49.9, "EUR", "in_stock")
+    db.upsert_listing(conn, other_site_id, "Surging Sparks ETB", "https://other.fi/p/1",
+                      44.9, "EUR", "out_of_stock")
+
+    results = db.search_listings(conn, ["surging"])
+    assert sorted(r["site_name"] for r in results) == ["Example", "Other"]
+    assert {r["availability"] for r in results} == {"in_stock", "out_of_stock"}
+
+
+def test_search_listings_with_no_terms_returns_nothing(conn, site_id):
+    db.upsert_listing(conn, site_id, "Surging Sparks ETB", "", 49.9, "EUR", "in_stock")
+
+    assert db.search_listings(conn, []) == []
+    assert db.search_listings(conn, ["   "]) == []
+
+
+def test_search_listings_treats_a_wildcard_as_a_literal(conn, site_id):
+    """Otherwise a typed % matches the whole catalogue."""
+    db.upsert_listing(conn, site_id, "Surging Sparks ETB", "", 49.9, "EUR", "in_stock")
+    db.upsert_listing(conn, site_id, "100% Pokemon", "", 1.0, "EUR", "in_stock")
+
+    results = db.search_listings(conn, ["100%"])
+    assert [r["raw_name"] for r in results] == ["100% Pokemon"]
+
+
+def test_search_listings_caps_at_the_limit(conn, site_id):
+    for n in range(10):
+        db.upsert_listing(conn, site_id, f"Booster Box {n}", "", 99.9, "EUR", "in_stock")
+
+    assert len(db.search_listings(conn, ["booster"], limit=3)) == 3
+
+
+def test_search_listings_splits_a_string_query(conn, site_id):
+    """The page splits on whitespace, but a bare string must not AND per character."""
+    db.upsert_listing(conn, site_id, "Prismatic Evolutions ETB", "", 54.9, "EUR", "in_stock")
+
+    assert len(db.search_listings(conn, "prismatic etb")) == 1
+
+
+# ── get_site_overview ─────────────────────────────────────────────────────────
+
+def test_get_site_overview_counts_listings_by_availability(conn, site_id):
+    for name, availability in [("A", "in_stock"), ("B", "in_stock"),
+                               ("C", "out_of_stock"), ("D", "preorder"),
+                               ("E", "unknown")]:
+        db.upsert_listing(conn, site_id, name, "", 1.0, "EUR", availability)
+
+    row = db.get_site_overview(conn)[0]
+    assert row["listing_count"] == 5
+    assert row["in_stock"] == 2
+    assert row["out_of_stock"] == 1
+    assert row["preorder"] == 1
+    assert row["unknown"] == 1
+    assert row["unknown_share"] == pytest.approx(0.2)
+
+
+def test_get_site_overview_counts_each_site_separately(conn, site_id, other_site_id):
+    db.upsert_listing(conn, site_id, "Mine", "", 1.0, "EUR", "in_stock")
+    db.upsert_listing(conn, other_site_id, "Theirs", "", 1.0, "EUR", "unknown")
+
+    rows = {r["name"]: r for r in db.get_site_overview(conn)}
+    assert rows["Example"]["listing_count"] == 1
+    assert rows["Example"]["unknown"] == 0
+    assert rows["Other"]["unknown"] == 1
+
+
+def test_get_site_overview_includes_a_site_with_no_listings(conn, site_id):
+    row = db.get_site_overview(conn)[0]
+    assert row["listing_count"] == 0
+    assert row["in_stock"] == 0
+    assert row["unknown_share"] is None
+
+
+def test_get_site_overview_reports_a_missing_availability_mode_as_none(conn, site_id):
+    """NULL is what the app renders as "not tracked", so it must survive the query."""
+    db.upsert_listing(conn, site_id, "A", "", 1.0, "EUR", "unknown")
+
+    row = db.get_site_overview(conn)[0]
+    assert row["availability_mode"] is None
+
+
+def test_get_site_overview_reports_the_configured_availability_mode(conn, site_id):
+    db.update_site_health(conn, site_id, success=True, availability_mode="text_map,presence")
+
+    row = db.get_site_overview(conn)[0]
+    assert row["availability_mode"] == "text_map,presence"
+
+
+def test_get_site_overview_carries_the_health_columns(conn, site_id):
+    db.update_site_health(conn, site_id, success=False, error_text="HTTP 403")
+
+    row = db.get_site_overview(conn)[0]
+    assert row["consecutive_failures"] == 1
+    assert row["last_error"] == "HTTP 403"
+    assert row["id"] == site_id
+
+
+# ── get_sites ─────────────────────────────────────────────────────────────────
+
+def test_get_sites_returns_id_and_name_ordered_by_name(conn, site_id, other_site_id):
+    assert db.get_sites(conn) == [
+        {"id": site_id, "name": "Example"},
+        {"id": other_site_id, "name": "Other"},
+    ]
+
+
+# ── get_site_listings ─────────────────────────────────────────────────────────
+
+def test_get_site_listings_returns_only_that_site(conn, site_id, other_site_id):
+    db.upsert_listing(conn, site_id, "Mine", "", 1.0, "EUR", "in_stock")
+    db.upsert_listing(conn, other_site_id, "Theirs", "", 1.0, "EUR", "in_stock")
+
+    results = db.get_site_listings(conn, site_id)
+    assert [r["raw_name"] for r in results] == ["Mine"]
+
+
+def test_get_site_listings_filters_by_availability(conn, site_id):
+    db.upsert_listing(conn, site_id, "Stocked", "", 1.0, "EUR", "in_stock")
+    db.upsert_listing(conn, site_id, "Gone", "", 1.0, "EUR", "out_of_stock")
+
+    results = db.get_site_listings(conn, site_id, availability="out_of_stock")
+    assert [r["raw_name"] for r in results] == ["Gone"]
+
+
+def test_get_site_listings_filters_by_name_ignoring_case(conn, site_id):
+    db.upsert_listing(conn, site_id, "Prismatic Evolutions ETB", "", 1.0, "EUR", "in_stock")
+    db.upsert_listing(conn, site_id, "Surging Sparks ETB", "", 1.0, "EUR", "in_stock")
+
+    results = db.get_site_listings(conn, site_id, term="PRISMATIC")
+    assert [r["raw_name"] for r in results] == ["Prismatic Evolutions ETB"]
+
+
+def test_get_site_listings_ands_the_name_terms(conn, site_id):
+    db.upsert_listing(conn, site_id, "Prismatic Evolutions ETB", "", 1.0, "EUR", "in_stock")
+    db.upsert_listing(conn, site_id, "Prismatic Evolutions Bundle", "", 1.0, "EUR", "in_stock")
+
+    results = db.get_site_listings(conn, site_id, term="prismatic etb")
+    assert [r["raw_name"] for r in results] == ["Prismatic Evolutions ETB"]
+
+
+def test_get_site_listings_carries_price_url_and_timestamps(conn, site_id):
+    db.upsert_listing(conn, site_id, "Box", "https://example.fi/p/box", 99.9, "EUR",
+                      "preorder", "Ennakkotilaus 12.9.2026")
+
+    row = db.get_site_listings(conn, site_id)[0]
+    assert row["latest_price"] == 99.9
+    assert row["latest_currency"] == "EUR"
+    assert row["product_url"] == "https://example.fi/p/box"
+    assert row["availability_text"] == "Ennakkotilaus 12.9.2026"
+    assert row["first_seen_at"] and row["last_seen_at"]
+
+
+# ── mark_all_updates_seen ─────────────────────────────────────────────────────
 
 def test_mark_all_updates_seen_sets_seen_for_all(conn, site_id):
     run_id = db.start_run(conn)
