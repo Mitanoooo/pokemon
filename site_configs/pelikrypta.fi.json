@@ -1,6 +1,6 @@
 {
   "site_name": "Pelikrypta (Ikamaa)",
-  "source_url": "https://pelikrypta.fi/collections/pokemon-trading-card-game",
+  "source_url": "https://pelikrypta.fi/collections/tuoteryhma-pokemon-tcg",
   "method": "css",
   "decimal_separator": "dot",
   "selectors": {
@@ -16,5 +16,5 @@
     "max_pages": 1
   },
   "confidence": "medium",
-  "notes": "Standard Shopify Dawn theme. Only 2 products currently listed in this collection (small/likely under-stocked catalog) - both fit on one page, no pagination controls present. Each product card has a quick-add button containing a `.sold-out-message` span with text 'Loppuunmyyty', but it always carries a `hidden` class with computed display:none for both sampled products (Dawn theme toggles this via JS per-variant on interaction, not reliably present in static/initial HTML) - in_stock left null since listing-page stock cannot be trusted without executing the variant-selection JS. Price uses standard Dawn markup: .price__container has .price__regular (base price) and .price__sale (shown when discounted) - use .price-item--regular under .price__regular for the standard price, or .price-item--sale if a sale is active."
+  "notes": "Standard Shopify Dawn theme. Only 2 products currently listed in this collection (small/likely under-stocked catalog) - both fit on one page, no pagination controls present. Each product card has a quick-add button containing a `.sold-out-message` span with text 'Loppuunmyyty', but it always carries a `hidden` class with computed display:none for both sampled products (Dawn theme toggles this via JS per-variant on interaction, not reliably present in static/initial HTML) - in_stock left null since listing-page stock cannot be trusted without executing the variant-selection JS. Price uses standard Dawn markup: .price__container has .price__regular (base price) and .price__sale (shown when discounted) - use .price-item--regular under .price__regular for the standard price, or .price-item--sale if a sale is active. Ticket 17: the old '/collections/pokemon-trading-card-game' now 404s; collections.json gives '/collections/tuoteryhma-pokemon-tcg' as the shop's only Pokémon collection, and it currently holds 0 products, so the site contributes nothing until it restocks. No preorder URL: '/collections/tuoteryhma-ennakkotilaukset' exists with 68 products but they are all Warhammer, and its '/pokemon' tag filter returns nothing."
 }

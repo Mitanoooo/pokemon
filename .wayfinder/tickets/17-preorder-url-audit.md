@@ -27,7 +27,23 @@ The same pass re-checks normal category coverage: a product that is never fetche
 
 **Tests:** `tests/test_site_configs.py` checks that every `preorder_urls` entry is an absolute URL on the site's own host. `tests/test_runner.py` covers the `from_preorder_url` flag reaching `listings` (that test belongs to ticket 19's set; either ticket may land it).
 
-**Status: OPEN**
+**Status: DONE**
+
+Decision on the resolution order: the flag outranks every form. Ranked after them it stayed
+dead for the 14 `presence` sites, and on the six added preorder pages that had products to
+read (pbcards' was empty), the badges say plain in-stock (korttistoppi 12/12, spelparken 8/8)
+or sold-out (pokepulls 10/10, peliparatiisi 6/6, swagykarp 6 of 8, tcgkauppa 22 of 27) —
+never preorder — so any lower rank would have read them wrong. A site with no `availability` block still reads `unknown`; `listings.from_preorder_url`
+records the provenance regardless.
+
+Audit result (`.scratch/tracker-refocus/preorder-urls.md`): 7 of 40 shops have a usable
+preorder URL, now in their configs — korttistoppi, pbcards, peliparatiisi, pokepulls,
+spelparken, swagykarp, tcgkauppa. 8 more have a preorder page that was left out (mostly
+Warhammer or electronics, or empty), 1 (kevinshobbyshop) has a preorder filter URL that stops
+filtering on page 2, 22 have none, 2 are unreachable (403). 7 + 8 + 1 + 22 + 2 = 40. Normal-coverage
+fixes from the same pass: pelikrypta's `source_url` 404ed and was replaced, and pbcards'
+absolute `pagination.url_pattern` became query-only so a second URL cannot paginate into the
+first.
 
 Blocking: nothing
 Blocked by: 15

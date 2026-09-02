@@ -8,6 +8,9 @@
     "https://spelparken.se/collections/pokemon-ultra-premium-collection",
     "https://spelparken.se/collections/pokemon-bundles"
   ],
+  "preorder_urls": [
+    "https://spelparken.se/collections/forkop"
+  ],
   "method": "css",
   "availability": {
     "selector": ".card__badge .badge",
@@ -31,5 +34,5 @@
     "max_pages": 3
   },
   "confidence": "high",
-  "notes": "Standard Shopify Dawn theme. Stock is INVERTED but the badge selector is not stock-specific: '.card__badge .badge' can also render 'Nyhet' (new) or sale badges, not just 'Slutsåld' (sold out) — scraper must check the badge's text content equals 'Slutsåld' to mark out-of-stock, not just presence. Price text contains both price__regular and price__sale blocks; when not discounted both show the same value — take the price-item--sale value if present and non-empty, else price-item--regular. 17 in-stock + 5 sold-out products, 2 pages confirmed."
+  "notes": "Standard Shopify Dawn theme. Stock is INVERTED but the badge selector is not stock-specific: '.card__badge .badge' can also render 'Nyhet' (new) or sale badges, not just 'Slutsåld' (sold out) — scraper must check the badge's text content equals 'Slutsåld' to mark out-of-stock, not just presence. Price text contains both price__regular and price__sale blocks; when not discounted both show the same value — take the price-item--sale value if present and non-empty, else price-item--regular. 17 in-stock + 5 sold-out products, 2 pages confirmed. Ticket 17: '/collections/forkop' is the preorder collection, 8 products at audit time, all Pokémon and each named '(Förköp) …', though the collection is shop-wide."
 }

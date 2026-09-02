@@ -226,6 +226,29 @@ def test_upsert_listing_defaults_to_unknown_availability(conn, site_id):
     assert row["availability"] == "unknown"
 
 
+def test_upsert_listing_defaults_from_preorder_url_to_zero(conn, site_id):
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR")
+
+    assert conn.execute("SELECT from_preorder_url FROM listings").fetchone()[0] == 0
+
+
+def test_upsert_listing_stores_from_preorder_url(conn, site_id):
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR", "preorder",
+                      "(preorder url)", from_preorder_url=True)
+
+    assert conn.execute("SELECT from_preorder_url FROM listings").fetchone()[0] == 1
+
+
+def test_upsert_listing_from_preorder_url_is_overwritten_not_coalesced(conn, site_id):
+    """The flag describes the last sighting, like availability next to it."""
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR", "preorder",
+                      from_preorder_url=True)
+    db.upsert_listing(conn, site_id, "Box", "", 99.90, "EUR", "in_stock",
+                      from_preorder_url=False)
+
+    assert conn.execute("SELECT from_preorder_url FROM listings").fetchone()[0] == 0
+
+
 # ── get_listing_state ─────────────────────────────────────────────────────────
 
 def test_get_listing_state_returns_rows_keyed_by_raw_name(conn, site_id):

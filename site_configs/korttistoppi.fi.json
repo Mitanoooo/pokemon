@@ -14,6 +14,9 @@
     "https://www.korttistoppi.fi/tuoteryhma/simplified-chinese-kiinankieliset",
     "https://www.korttistoppi.fi/tuoteryhma/30th-celebration"
   ],
+  "preorder_urls": [
+    "https://www.korttistoppi.fi/tuoteryhma/ennakkotilaus"
+  ],
   "method": "css",
   "availability": {
     "selector": ".product-badge-content",
@@ -35,5 +38,5 @@
     "max_pages": 1
   },
   "confidence": "high",
-  "notes": "Finqu-hosted webshop platform. All 67 products render on a single page - the .pagination widget itself confirms 'Sivu 1 / 1'. Sold-out items show a badge <div class=\"product-badge product-badge-general\"><span class=\"product-badge-content\">Loppunut</span></div> inside .product-media-container; in_stock is left null since the reliable signal is the ABSENCE of that badge (badge text 'Loppunut' = out of stock) rather than a positive in-stock marker - treat presence of '.product-badge-content' with text 'Loppunut' within the container as out-of-stock."
+  "notes": "Finqu-hosted webshop platform. All 67 products render on a single page - the .pagination widget itself confirms 'Sivu 1 / 1'. Sold-out items show a badge <div class=\"product-badge product-badge-general\"><span class=\"product-badge-content\">Loppunut</span></div> inside .product-media-container; in_stock is left null since the reliable signal is the ABSENCE of that badge (badge text 'Loppunut' = out of stock) rather than a positive in-stock marker - treat presence of '.product-badge-content' with text 'Loppunut' within the container as out-of-stock. Ticket 17: '/tuoteryhma/ennakkotilaus' (singular) is the preorder product group, 12 products at audit time, all Pokémon, though the group is shop-wide and this shop also sells Lorcana and hockey cards. Single page: '/page/2' 404s, and pagination is 'none' here anyway."
 }

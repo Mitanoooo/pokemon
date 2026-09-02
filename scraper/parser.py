@@ -14,7 +14,8 @@ def _sel(config: dict, key: str) -> Optional[str]:
 
 AVAILABILITY_STATES = ("in_stock", "out_of_stock", "preorder", "unknown")
 
-# Resolution order of the availability block's forms. First hit wins.
+# Resolution order of the availability block's forms. First hit wins — but a
+# page fetched from a preorder URL beats all of them (see detect_availability).
 AVAILABILITY_FORMS = ("text_map", "presence", "container_class_map", "attribute")
 
 # availability_text is stored so a misread badge can be re-diagnosed without
@@ -67,13 +68,24 @@ def detect_availability(
     availability is one of AVAILABILITY_STATES. availability_text is the raw
     text that produced it, capped, or None when the state came from a default.
 
-    Forms resolve in AVAILABILITY_FORMS order and the first one that produces a
-    state wins; a form that matches nothing falls through to the next. No
-    availability block at all means unknown, whatever the page says.
+    A page fetched from one of the site's preorder URLs outranks every form: the
+    shop put the item in that category deliberately, while its badges describe
+    orderability, and a preorder is orderable. Ranked after the forms (as ticket
+    15 left it) the flag was dead for the 14 `presence` sites, whose blocks set
+    both `present` and `absent` and so always produce a state.
+
+    Below that, forms resolve in AVAILABILITY_FORMS order and the first one that
+    produces a state wins; a form that matches nothing falls through to the next.
+    No availability block at all means unknown, whatever the page says — an
+    untracked site stays untracked rather than reading preorder-for-everything,
+    though listings.from_preorder_url still records where the sighting came from.
     """
     block = config.get("availability")
     if not block:
         return "unknown", None
+
+    if from_preorder_url:
+        return "preorder", "(preorder url)"
 
     selector = block.get("selector")
 
@@ -120,9 +132,6 @@ def detect_availability(
         for key, state in (attribute.get("map") or {}).items():
             if _norm(key) == _norm(value):
                 return _state(state, config), value[:AVAILABILITY_TEXT_CAP]
-
-    if from_preorder_url:
-        return "preorder", "(preorder url)"
 
     return _state(block.get("default", "unknown"), config), None
 
@@ -264,9 +273,9 @@ def scrape_page(
     Each dict has: raw_name, price (float or None), currency, availability,
     availability_text, product_url.
 
-    from_preorder_url says the page came from one of the site's preorder URLs;
-    it is the last-resort availability signal (ticket 17 wires up the config
-    array that produces it).
+    from_preorder_url says the page came from one of the site's preorder_urls,
+    which makes every product on it read `preorder` whatever its badge says —
+    see detect_availability for why that outranks the forms.
 
     Supports container_scope config key to pre-filter the DOM (e.g. prisma.fi
     carousel exclusion).

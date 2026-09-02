@@ -231,11 +231,40 @@ def test_container_class_map_beats_attribute():
     assert detect_availability(el, cfg)[0] == "in_stock"
 
 
-def test_preorder_url_loses_to_a_real_badge():
-    """A shop's preorder page can still list an item as sold out."""
+def test_preorder_url_beats_a_text_map_badge():
+    """The URL outranks the badge: a preorder page's "Loppu" is a sold-out preorder.
+
+    Ticket 17 moved the flag ahead of the forms. Left after them it was dead for
+    every `presence` site, because a block with both `present` and `absent`
+    always produces a state.
+    """
     el = make_el('<li><span class="badge">Loppu</span></li>')
     availability, text = detect_availability(el, BADGE_CFG, from_preorder_url=True)
-    assert (availability, text) == ("out_of_stock", "Loppu")
+    assert (availability, text) == ("preorder", "(preorder url)")
+
+
+def test_preorder_url_beats_presence():
+    """An orderable preorder has an add-to-cart button; that is not stock."""
+    el = make_el('<li class="product"><b class="cart">Osta</b></li>')
+    cfg = {"availability": {
+        "presence": {"selector": "b.cart", "present": "in_stock", "absent": "out_of_stock"},
+    }}
+    assert detect_availability(el, cfg, from_preorder_url=True) == ("preorder", "(preorder url)")
+
+
+def test_preorder_url_beats_container_class_map_and_attribute():
+    el = make_el('<li class="product instock" data-stock="InStock"></li>')
+    cfg = {"availability": {
+        "container_class_map": {"instock": "in_stock"},
+        "attribute": {"name": "data-stock", "map": {"InStock": "in_stock"}},
+    }}
+    assert detect_availability(el, cfg, from_preorder_url=True) == ("preorder", "(preorder url)")
+
+
+def test_preorder_url_does_not_affect_pages_off_a_normal_url():
+    el = make_el('<li><span class="badge">Varastossa</span></li>')
+    assert detect_availability(el, BADGE_CFG, from_preorder_url=False) == (
+        "in_stock", "Varastossa")
 
 
 def test_preorder_url_wins_over_default():
@@ -359,6 +388,14 @@ def test_scrape_page_tcgkauppa_availability_from_container_class():
     assert len(in_stock) == 6
     assert len(out_stock) == 42
     assert all("instock" in p["availability_text"] for p in in_stock)
+
+def test_scrape_page_from_preorder_url_marks_every_product_preorder():
+    html = Path("tests/fixtures/tcgkauppa.fi/page1.html").read_text()
+    products = scrape_page(html, TCGKAUPPA_CFG, from_preorder_url=True)
+    assert products
+    assert all(p["availability"] == "preorder" for p in products)
+    assert all(p["availability_text"] == "(preorder url)" for p in products)
+
 
 def test_scrape_page_tcgkauppa_currency():
     html = Path("tests/fixtures/tcgkauppa.fi/page1.html").read_text()

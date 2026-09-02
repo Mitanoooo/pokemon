@@ -1,6 +1,11 @@
 """Tests for scraper.paginator."""
 import pytest
-from scraper.paginator import is_paginated, paginate, source_urls
+from scraper.paginator import (
+    is_paginated,
+    paginate,
+    source_urls,
+    tagged_source_urls,
+)
 
 
 # ── none ─────────────────────────────────────────────────────────────────────
@@ -217,3 +222,46 @@ def test_paginate_paginates_the_given_source_url():
         "https://example.com/b",
         "https://example.com/b?page=2",
     ]
+
+
+# ── tagged_source_urls (preorder URLs) ────────────────────────────────────────
+
+def test_tagged_source_urls_tags_a_plain_source_url_as_normal():
+    assert tagged_source_urls({"source_url": "https://example.com/shop"}) == [
+        ("https://example.com/shop", False)
+    ]
+
+
+def test_tagged_source_urls_appends_preorder_urls_tagged():
+    cfg = {
+        "source_urls": ["https://example.com/a", "https://example.com/b"],
+        "preorder_urls": ["https://example.com/ennakkotilaus"],
+    }
+    assert tagged_source_urls(cfg) == [
+        ("https://example.com/a", False),
+        ("https://example.com/b", False),
+        ("https://example.com/ennakkotilaus", True),
+    ]
+
+
+def test_tagged_source_urls_puts_preorder_urls_last():
+    """Last sighting wins the dedupe, so the preorder flag must be set last."""
+    cfg = {
+        "source_url": "https://example.com/a",
+        "preorder_urls": ["https://example.com/p1", "https://example.com/p2"],
+    }
+    assert [flag for _, flag in tagged_source_urls(cfg)] == [False, True, True]
+
+
+def test_tagged_source_urls_without_preorder_urls_matches_source_urls():
+    cfg = {"source_urls": ["https://example.com/a", "https://example.com/b"]}
+    assert [url for url, _ in tagged_source_urls(cfg)] == source_urls(cfg)
+
+
+def test_source_urls_ignores_preorder_urls():
+    """The site-identity lookup must stay the first normal URL."""
+    cfg = {
+        "source_url": "https://example.com/a",
+        "preorder_urls": ["https://example.com/ennakko"],
+    }
+    assert source_urls(cfg) == ["https://example.com/a"]

@@ -10,6 +10,9 @@
     "https://pokepulls.fi/kategoria/tinit",
     "https://pokepulls.fi/kategoria/premium-tournament-collection"
   ],
+  "preorder_urls": [
+    "https://pokepulls.fi/kategoria/ennakkotilattavissa"
+  ],
   "method": "css",
   "availability": {
     "presence": {
@@ -31,5 +34,5 @@
     "max_pages": 1
   },
   "confidence": "medium",
-  "notes": "Next.js/Tailwind storefront (looks like a SumUp/Storefront platform - images served from images.sumup.com). Styling classes are utility (Tailwind) and could change on redeploy, but stable 'data-selector' attributes exist and are used instead - preferred over the Tailwind classes for durability. The product_container link itself carries the price/name/stock as descendants (it wraps the whole card, no separate outer wrapper element). Only 16 products found on this page with no pagination controls, load-more button, or next link detected, so treated as single-page; note category may use client-side filtering/infinite scroll not visible without further interaction, so max_pages could need revisiting. Out-of-stock items show <span class=\"product-sold-out-label\">Loppuunmyyty</span> inside .list-product-price-wrapper; in_stock left null since the reliable signal is ABSENCE of that '.product-sold-out-label' element within the container, not a positive marker."
+  "notes": "Next.js/Tailwind storefront (looks like a SumUp/Storefront platform - images served from images.sumup.com). Styling classes are utility (Tailwind) and could change on redeploy, but stable 'data-selector' attributes exist and are used instead - preferred over the Tailwind classes for durability. The product_container link itself carries the price/name/stock as descendants (it wraps the whole card, no separate outer wrapper element). Only 16 products found on this page with no pagination controls, load-more button, or next link detected, so treated as single-page; note category may use client-side filtering/infinite scroll not visible without further interaction, so max_pages could need revisiting. Out-of-stock items show <span class=\"product-sold-out-label\">Loppuunmyyty</span> inside .list-product-price-wrapper; in_stock left null since the reliable signal is ABSENCE of that '.product-sold-out-label' element within the container, not a positive marker. Ticket 17: '/kategoria/ennakkotilattavissa' is a Pokémon-scoped preorder category (10 products at audit time, all named '(julkaisu …)'). Every product there carries the sold-out label, so without the preorder URL they read out_of_stock."
 }

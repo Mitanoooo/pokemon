@@ -789,7 +789,7 @@ def _run_with_pages(cfg, products_by_url, conn):
         fetched.append(url)
         return url
 
-    def fake_scrape(html, config):
+    def fake_scrape(html, config, from_preorder_url=False):
         return products_by_url.get(html, [])
 
     with patch("scraper.runner.fetch", side_effect=fake_fetch), \
@@ -943,7 +943,7 @@ def test_run_site_source_urls_fetch_failure_marks_site_failure(conn):
         return url
 
     with patch("scraper.runner.fetch", side_effect=fake_fetch), \
-         patch("scraper.runner.scrape_page", side_effect=lambda html, cfg_: _named_products("A1")), \
+         patch("scraper.runner.scrape_page", side_effect=lambda html, cfg_, **kw: _named_products("A1")), \
          patch("scraper.runner.time.sleep"):
         run_site(cfg, conn)
 
@@ -978,7 +978,7 @@ def test_run_site_404_on_later_page_ends_pagination_not_the_site(conn):
         return url
 
     with patch("scraper.runner.fetch", side_effect=fake_fetch), \
-         patch("scraper.runner.scrape_page", side_effect=lambda html, cfg_: _named_products("A1")), \
+         patch("scraper.runner.scrape_page", side_effect=lambda html, cfg_, **kw: _named_products("A1")), \
          patch("scraper.runner.time.sleep"):
         run_site(cfg, conn)
 
@@ -1010,7 +1010,7 @@ def test_run_site_404_on_later_page_keeps_other_source_urls(conn):
             raise FetchError("HTTP 404 for " + url, 404)
         return url
 
-    def fake_scrape(html, cfg_):
+    def fake_scrape(html, cfg_, **kw):
         return _named_products("B1") if "/b" in html else _named_products("A1")
 
     with patch("scraper.runner.fetch", side_effect=fake_fetch), \
@@ -1024,6 +1024,126 @@ def test_run_site_404_on_later_page_keeps_other_source_urls(conn):
     assert names == ["A1", "B1"]
 
 
+# ── run_site: preorder URLs ───────────────────────────────────────────────────
+
+def _flag_by_name(conn) -> dict:
+    return {r["raw_name"]: r["from_preorder_url"] for r in conn.execute(
+        "SELECT raw_name, from_preorder_url FROM listings")}
+
+
+def test_run_site_scrapes_preorder_urls_too(conn):
+    cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
+    fetched, _ = _run_with_pages(cfg, {
+        "https://example.fi/shop/": _named_products("A1"),
+        "https://example.fi/ennakkotilaus/": _named_products("P1"),
+    }, conn)
+
+    assert fetched == ["https://example.fi/shop/", "https://example.fi/ennakkotilaus/"]
+    assert _flag_by_name(conn) == {"A1": 0, "P1": 1}
+
+
+def test_run_site_preorder_urls_share_the_site_identity(conn):
+    """The site row keeps its first normal URL, not a preorder one."""
+    cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
+    _run_with_pages(cfg, {
+        "https://example.fi/shop/": _named_products("A1"),
+        "https://example.fi/ennakkotilaus/": _named_products("P1"),
+    }, conn)
+
+    sites = conn.execute("SELECT id, url FROM sites").fetchall()
+    assert len(sites) == 1
+    assert sites[0]["url"] == "https://example.fi/shop/"
+
+
+def test_run_site_preorder_urls_paginate_like_the_others(conn):
+    cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakko"]})
+    cfg["pagination"] = {"type": "url_pattern", "url_pattern": "?page={page}",
+                         "max_pages": 2}
+    fetched, _ = _run_with_pages(cfg, {
+        "https://example.fi/shop/": _named_products("A1", "A2"),
+        "https://example.fi/shop/?page=2": _named_products("A3"),
+        "https://example.fi/ennakko": _named_products("P1", "P2"),
+        "https://example.fi/ennakko?page=2": _named_products("P3"),
+    }, conn)
+
+    assert fetched == ["https://example.fi/shop/", "https://example.fi/shop/?page=2",
+                       "https://example.fi/ennakko", "https://example.fi/ennakko?page=2"]
+    assert _flag_by_name(conn) == {"A1": 0, "A2": 0, "A3": 0, "P1": 1, "P2": 1, "P3": 1}
+
+
+def test_run_site_reads_a_preorder_url_page_as_preorder(conn):
+    """The whole chain, real parser included: badge says in stock, page says preorder."""
+    def page(name):
+        return (f"<ul><li class='product'><h2>{name}</h2>"
+                f"<span class='badge'>In stock</span>"
+                f"<span class='price'>9,99 €</span><a href='/p'>x</a></li></ul>")
+
+    cfg = _cfg(extra={
+        "preorder_urls": ["https://example.fi/ennakkotilaus/"],
+        "availability": {"selector": ".badge",
+                         "text_map": {"In stock": "in_stock"},
+                         "default": "unknown"},
+    })
+    pages = {"https://example.fi/shop/": page("Normal Box"),
+             "https://example.fi/ennakkotilaus/": page("Preorder Box")}
+
+    with patch("scraper.runner.fetch", side_effect=lambda url, **kw: pages[url]), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    rows = {r["raw_name"]: (r["availability"], r["availability_text"],
+                            r["from_preorder_url"])
+            for r in conn.execute("SELECT * FROM listings")}
+    assert rows == {"Normal Box": ("in_stock", "In stock", 0),
+                    "Preorder Box": ("preorder", "(preorder url)", 1)}
+
+
+def test_run_site_listing_on_both_urls_keeps_the_last_sighting_flag(conn):
+    """Preorder URLs come last, so a shared listing reads as a preorder."""
+    cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
+    _run_with_pages(cfg, {
+        "https://example.fi/shop/": _named_products("Shared Box"),
+        "https://example.fi/ennakkotilaus/": _named_products("Shared Box"),
+    }, conn)
+
+    assert _flag_by_name(conn) == {"Shared Box": 1}
+
+
+def test_run_site_dropping_a_listing_off_the_preorder_url_clears_the_flag(conn):
+    """The flag means "seen on a preorder URL last run", not "ever seen on one"."""
+    cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
+    _run_with_pages(cfg, {
+        "https://example.fi/shop/": _named_products("Box"),
+        "https://example.fi/ennakkotilaus/": _named_products("Box"),
+    }, conn)
+    assert _flag_by_name(conn) == {"Box": 1}
+
+    _run_with_pages(cfg, {
+        "https://example.fi/shop/": _named_products("Box"),
+        "https://example.fi/ennakkotilaus/": [],
+    }, conn)
+    assert _flag_by_name(conn) == {"Box": 0}
+
+
+def test_run_site_preorder_url_failure_marks_the_site_unhealthy(conn):
+    cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
+
+    def fake_fetch(url, **kwargs):
+        if "ennakkotilaus" in url:
+            raise FetchError("HTTP 500 for " + url, 500)
+        return url
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page",
+               side_effect=lambda html, cfg_, **kw: _named_products("A1")), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 1
+    assert "500" in (site["last_error"] or "")
+
+
 def test_run_site_non_404_error_on_later_page_still_fails(conn):
     """A 500 mid-pagination is a real failure, not an end-of-listing signal."""
     cfg = _paged_cfg(["https://example.fi/a"])
@@ -1034,7 +1154,7 @@ def test_run_site_non_404_error_on_later_page_still_fails(conn):
         return url
 
     with patch("scraper.runner.fetch", side_effect=fake_fetch), \
-         patch("scraper.runner.scrape_page", side_effect=lambda html, cfg_: _named_products("A1")), \
+         patch("scraper.runner.scrape_page", side_effect=lambda html, cfg_, **kw: _named_products("A1")), \
          patch("scraper.runner.time.sleep"):
         run_site(cfg, conn)
 

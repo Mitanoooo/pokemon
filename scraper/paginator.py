@@ -19,6 +19,21 @@ def source_urls(config: dict) -> "list[str]":
     return [config["source_url"]]
 
 
+def tagged_source_urls(config: dict) -> "list[tuple[str, bool]]":
+    """Every entry URL of one site paired with its from_preorder_url flag.
+
+    Preorder URLs ("preorder_urls") come after the normal ones, so a listing
+    carried by both keeps the preorder flag: sightings dedupe last-occurrence-
+    wins, both in listings and in the event diff.
+
+    source_urls() stays the normal-URLs-only helper, because the first of those
+    is what identifies the site.
+    """
+    urls: "list[tuple[str, bool]]" = [(u, False) for u in source_urls(config)]
+    urls += [(u, True) for u in (config.get("preorder_urls") or [])]
+    return urls
+
+
 def paginate(config: dict, source_url: Optional[str] = None) -> "list[str]":
     """Page URLs for one of the site's entry URLs (the first one by default)."""
     if source_url is None:

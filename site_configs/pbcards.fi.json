@@ -1,6 +1,9 @@
 {
   "site_name": "PBCards",
   "source_url": "https://pbcards.fi/collections/pokemon",
+  "preorder_urls": [
+    "https://pbcards.fi/collections/pokemon-pre-orders"
+  ],
   "method": "css",
   "availability": {
     "presence": {
@@ -18,9 +21,9 @@
   "pagination": {
     "type": "url_pattern",
     "selector": "nav.n6pg li.next a",
-    "url_pattern": "https://pbcards.fi/collections/pokemon?page={page}",
+    "url_pattern": "?page={page}",
     "max_pages": 6
   },
   "confidence": "high",
-  "notes": "Shopify store on a custom 'xtra' theme. IMPORTANT: this domain failed to resolve for the sandboxed browser tool (net::ERR_NAME_NOT_RESOLVED) despite resolving fine via a direct curl fetch from the same host — if a scraper run hits DNS failures here, it's likely an environment/resolver quirk, not the site being down; verify with a plain curl/requests fetch first. Renders as plain static HTML — no JS rendering needed for the collection grid itself. Confirmed via <nav class=\"n6pg\"><ol> pagination control: page 1 active, up to page 6 shown, '?page={page}' URL pattern confirmed by both this nav and a <link rel=\"next\"> tag in <head>. Stock: each product_container li.product-card gets an extra 'unavailable' class when out of stock (container-class check, same pattern as tcgkauppa.fi) AND contains a redundant descendant p.stock element with class 'overlay-valid' (in stock, incl. 'low-stock' variant) or 'overlay-error' (out of stock) — note the markup duplicates this stock paragraph twice per card (one 'list-hide' / one 'list-only' variant for responsive grid-vs-list display toggles) with identical text, so a scraper should dedupe or just take the first match. Price format clean, e.g. '4,95 €', with an optional '.old-price' span for a struck-through original price when discounted."
+  "notes": "Shopify store on a custom 'xtra' theme. IMPORTANT: this domain failed to resolve for the sandboxed browser tool (net::ERR_NAME_NOT_RESOLVED) despite resolving fine via a direct curl fetch from the same host — if a scraper run hits DNS failures here, it's likely an environment/resolver quirk, not the site being down; verify with a plain curl/requests fetch first. Renders as plain static HTML — no JS rendering needed for the collection grid itself. Confirmed via <nav class=\"n6pg\"><ol> pagination control: page 1 active, up to page 6 shown, '?page={page}' URL pattern confirmed by both this nav and a <link rel=\"next\"> tag in <head>. Stock: each product_container li.product-card gets an extra 'unavailable' class when out of stock (container-class check, same pattern as tcgkauppa.fi) AND contains a redundant descendant p.stock element with class 'overlay-valid' (in stock, incl. 'low-stock' variant) or 'overlay-error' (out of stock) — note the markup duplicates this stock paragraph twice per card (one 'list-hide' / one 'list-only' variant for responsive grid-vs-list display toggles) with identical text, so a scraper should dedupe or just take the first match. Price format clean, e.g. '4,95 €', with an optional '.old-price' span for a struck-through original price when discounted. Ticket 17: url_pattern was the absolute '/collections/pokemon?page={page}' and is now the query-only '?page={page}', which resolves the same for the collection but also paginates the preorder URL instead of walking back into /collections/pokemon. '/collections/pokemon-pre-orders' (shop title 'Ennakkotilaukset') is Pokémon-scoped but held 0 products at audit time (confirmed via products.json), so it costs one fetch per run until the shop fills it."
 }

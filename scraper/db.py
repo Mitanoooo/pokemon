@@ -62,6 +62,7 @@ def upsert_listing(
     availability: str = "unknown",
     availability_text: Optional[str] = None,
     run_id: Optional[int] = None,
+    from_preorder_url: bool = False,
 ) -> None:
     """Insert-or-update the listings row for one (site_id, raw_name) sighting.
 
@@ -74,10 +75,10 @@ def upsert_listing(
     value: latest_price is "the last price we could parse", NULL only when no
     price has ever been parsed for this pair.
 
-    availability and availability_text, by contrast, are overwritten on every
-    sighting, together: they mean "state as of the last time we saw this
-    listing", not "best state ever known", and a text kept from an older badge
-    would no longer explain the state next to it.
+    availability, availability_text and from_preorder_url, by contrast, are
+    overwritten on every sighting, together: they mean "state as of the last time
+    we saw this listing", not "best state ever known", and a text kept from an
+    older badge would no longer explain the state next to it.
     """
     now = _now()
     url = product_url or None
@@ -87,8 +88,8 @@ def upsert_listing(
         INSERT INTO listings
             (site_id, raw_name, product_url, first_seen_at, last_seen_at,
              last_run_id, latest_price, latest_currency, availability,
-             availability_text)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             availability_text, from_preorder_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (site_id, raw_name) DO UPDATE SET
             product_url       = COALESCE(excluded.product_url, listings.product_url),
             last_seen_at      = excluded.last_seen_at,
@@ -96,7 +97,8 @@ def upsert_listing(
             latest_price      = COALESCE(excluded.latest_price, listings.latest_price),
             latest_currency   = COALESCE(excluded.latest_currency, listings.latest_currency),
             availability      = excluded.availability,
-            availability_text = excluded.availability_text
+            availability_text = excluded.availability_text,
+            from_preorder_url = excluded.from_preorder_url
         """,
         (
             site_id,
@@ -109,6 +111,7 @@ def upsert_listing(
             currency,
             availability or "unknown",
             availability_text,
+            int(bool(from_preorder_url)),
         ),
     )
     conn.commit()

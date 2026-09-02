@@ -1,9 +1,11 @@
 """Guards on config fields that used to be hardcoded in Python."""
 import json
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
+from scraper.paginator import source_urls
 from scraper.parser import AVAILABILITY_FORMS, AVAILABILITY_STATES, availability_forms
 from scraper.price_parser import DEFAULT_MAX_PRICE
 
@@ -104,6 +106,35 @@ def test_availability_blocks_have_no_unknown_keys():
     for path in sorted(CONFIG_DIR.glob("*.json")):
         block = json.loads(path.read_text(encoding="utf-8")).get("availability") or {}
         assert set(block) <= allowed, f"{path.name}: {set(block) - allowed}"
+
+
+# ── preorder URLs ─────────────────────────────────────────────────────────────
+
+def _host(url: str) -> str:
+    return (urlparse(url).hostname or "").removeprefix("www.")
+
+
+def test_preorder_urls_is_a_list_of_absolute_urls_on_the_sites_own_host():
+    """A relative or foreign URL here would silently scrape the wrong shop."""
+    for path in sorted(CONFIG_DIR.glob("*.json")):
+        config = json.loads(path.read_text(encoding="utf-8"))
+        preorder_urls = config.get("preorder_urls")
+        if preorder_urls is None:
+            continue
+        assert isinstance(preorder_urls, list) and preorder_urls, path.name
+        site_hosts = {_host(u) for u in source_urls(config)}
+        for url in preorder_urls:
+            assert urlparse(url).scheme in ("http", "https"), f"{path.name}: {url}"
+            assert _host(url) in site_hosts, f"{path.name}: {url}"
+
+
+def test_preorder_urls_do_not_repeat_a_normal_source_url():
+    """A URL scraped twice per run would only tag its listings preorder by luck."""
+    for path in sorted(CONFIG_DIR.glob("*.json")):
+        config = json.loads(path.read_text(encoding="utf-8"))
+        preorder_urls = config.get("preorder_urls") or []
+        assert len(set(preorder_urls)) == len(preorder_urls), path.name
+        assert not set(preorder_urls) & set(source_urls(config)), path.name
 
 
 def test_text_map_and_attribute_forms_have_something_to_read():

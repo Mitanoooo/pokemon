@@ -6,17 +6,27 @@ Confidence counts: **21 high**, **16 medium**, **3 low**.
 
 - `site_name`, `method`, `selectors`, `confidence`, `notes` — as in every config.
 - `availability` — how to read a listing's state. Optional; a config without it
-  reports as "not tracked" rather than as all-unknown. Keys, resolved in this
-  order and first hit wins: `text_map` (badge text to state, matched as a
-  casefolded substring under `selector`), `presence` (`selector` plus `present`
-  and `absent` states), `container_class_map` (the container's own classes),
-  `attribute` (`name` plus a value `map`), then a preorder-URL fallback, then
+  reports as "not tracked" rather than as all-unknown. In a config that has this
+  block, a page fetched from one of the site's `preorder_urls` reads `preorder`
+  and skips the forms below. Otherwise
+  the keys resolve in this order and the first hit wins: `text_map` (badge text to
+  state, matched as a casefolded substring under `selector`), `presence`
+  (`selector` plus `present` and `absent` states), `container_class_map` (the
+  container's own classes), `attribute` (`name` plus a value `map`), then
   `default`. States are `in_stock`, `out_of_stock`, `preorder`, `unknown`.
 - `source_url` — the single category page to scrape.
 - `source_urls` — array form of the above, for sites that split products across
   several category pages. Every URL is paginated on its own and all of them
   report under one site identity (the first URL identifies the site row). Use
   one or the other, not both; `source_urls` wins if both are present.
+- `preorder_urls` — array of the site's own preorder category pages, scraped like
+  the normal ones but after them, and marked: every listing read there gets
+  `listings.from_preorder_url = 1`, and state `preorder` as long as the config has
+  an `availability` block at all (without one the site stays untracked and reads
+  `unknown`, so the column is the only trace). Never used for site
+  identity. Only add a URL whose contents are mostly Pokémon — nothing filters
+  listings by name, so a shop-wide preorder page imports its other brands too.
+  See `.scratch/tracker-refocus/preorder-urls.md` for the per-site audit.
 - `decimal_separator` — `"dot"` or `"comma"` (default `"comma"`), how the site
   prints prices.
 - `pagination.type` — `"none"`, `"url_pattern"`, or `"offset"`, plus

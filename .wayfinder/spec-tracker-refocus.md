@@ -138,20 +138,20 @@ One `availability` block replaces `stock_mode`, `stock_badge_text` and the `in_s
 
 Every key is optional. `detect_availability(container_el, config, from_preorder_url)` resolves in this fixed order and returns the first hit as `(availability, availability_text)`:
 
+0. `from_preorder_url` is 1 → `preorder`, `availability_text` = `"(preorder url)"`, whatever the badge says. Ticket 17 moved this ahead of the forms: a block carrying both `present` and `absent` always resolves, so ranked last the flag was dead for the 14 `presence` sites, and the audit found that every added preorder URL badges its items as plain in-stock or sold-out. A site with no `availability` block at all still reads `unknown`; only `listings.from_preorder_url` records the provenance there.
 1. `text_map` against the text of every element matching `selector`. Text is casefolded and whitespace-collapsed; keys are matched as substrings, longest key first, so `"Ennakkotilaus 12.9.2026"` still resolves. `availability_text` is the matched element's raw text.
 2. `presence` on its own selector.
 3. `container_class_map` against the container's own class list. `availability_text` is the class list joined by spaces.
 4. `attribute` on the element matching `selector` (or the container if no selector).
-5. `from_preorder_url` is 1 and nothing above matched → `preorder`, `availability_text` = `"(preorder url)"`.
-6. `default`, normally `unknown`.
+5. `default`, normally `unknown`.
 
 Migration of the 23 configs that have a usable `stock_mode`: `normal`/`inverted` become `presence`, `badge_text` becomes a `text_map` with the old badge text mapped to `out_of_stock` and `"default": "in_stock"`, `container_class` becomes `container_class_map`, `attribute` becomes `attribute`. Configs with `"unknown"` or no key get no `availability` block, which is what makes the app report them as untracked instead of silently unknown. `stock_mode` is deleted from every config and from the parser; `tests/test_site_configs.py` gains a check that no config still names it.
 
 ### Preorder URLs
 
-`preorder_urls` is a new config array alongside `source_url` / `source_urls`. `paginator.source_urls()` returns preorder URLs too, tagged, and `runner._scrape_source_url` passes `from_preorder_url` into the parser and the listings upsert. A listing seen on both a normal and a preorder URL in the same run keeps the last sighting's flag, which matches how duplicate sightings are already deduped (last occurrence wins).
+`preorder_urls` is a new config array alongside `source_url` / `source_urls`. `paginator.tagged_source_urls()` returns the normal URLs and then the preorder ones, each paired with its flag, while `source_urls()` stays normal-only because its first entry is the site identity; `runner._scrape_source_url` passes `from_preorder_url` into the parser and the listings upsert. A listing seen on both a normal and a preorder URL in the same run keeps the last sighting's flag, which matches how duplicate sightings are already deduped (last occurrence wins).
 
-Audit deliverable: `.scratch/tracker-refocus/preorder-urls.md`, one line per site recording the URL found or "none exists", in the shape of the ticket-06 multi-URL audit.
+Audit deliverable: `.scratch/tracker-refocus/preorder-urls.md`, one line per site recording the URL found or "none exists", in the shape of the ticket-06 multi-URL audit. Result: 7 of 40 shops have a usable one (korttistoppi, pbcards, peliparatiisi, pokepulls, spelparken, swagykarp, tcgkauppa). Only URLs whose contents are mostly Pokémon go into a config, because nothing filters listings by name and a shop-wide preorder page would import Warhammer and electronics too.
 
 ### Probe tool
 
@@ -189,7 +189,7 @@ Audit deliverable: `.scratch/tracker-refocus/preorder-urls.md`, one line per sit
 
 **What makes a good test here:** assert on database state after a `db.py` call or a `run_site()` call, and on the `(availability, availability_text)` tuple returned by the parser. Do not assert on SQL text, selector internals, or helper call counts.
 
-**`tests/test_parser.py`** (replacing the 15 `detect_stock` tests): one test per resolution form, plus precedence tests (`text_map` beats `container_class_map`; `from_preorder_url` loses to any real badge and wins over `default`), substring matching with a trailing date, casefolding, missing block → `unknown`, and `availability_text` content per form. Existing fixture-driven `scrape_page` tests for tcgkauppa, peliparatiisi and karkkainen are updated to the new return shape.
+**`tests/test_parser.py`** (replacing the 15 `detect_stock` tests): one test per resolution form, plus precedence tests (`text_map` beats `container_class_map`; `from_preorder_url` beats every form, including a badge that says otherwise), substring matching with a trailing date, casefolding, missing block → `unknown`, and `availability_text` content per form. Existing fixture-driven `scrape_page` tests for tcgkauppa, peliparatiisi and karkkainen are updated to the new return shape.
 
 **`tests/test_runner.py`**: first run emits no events but does upsert listings; second run emits `new_listing`; a preorder first sighting emits `new_preorder` and not `new_listing`; `in_stock` → `preorder` emits `new_preorder`; `preorder` → `in_stock` and `out_of_stock` → `in_stock` both emit `back_in_stock` with the old state in `old_value`; a lower price emits `price_drop`, a higher one `price_rise`, an equal one nothing; a sighting from a preorder URL sets `from_preorder_url`.
 

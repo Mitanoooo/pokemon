@@ -10,7 +10,12 @@ import sqlite3
 
 from scraper import db
 from scraper.fetcher import FetchError, fetch
-from scraper.paginator import is_paginated, paginate, source_urls
+from scraper.paginator import (
+    is_paginated,
+    paginate,
+    source_urls,
+    tagged_source_urls,
+)
 from scraper.parser import availability_forms, scrape_page
 
 logger = logging.getLogger(__name__)
@@ -126,12 +131,17 @@ def _scrape_source_url(
     run_id: int,
     source_url: str,
     sleep_first: bool,
+    from_preorder_url: bool = False,
 ) -> "tuple[list[dict], int]":
     """Scrape every page of one source URL; return its products and page count.
 
     Listings are upserted page by page, as they are read. sleep_first jitters
     before the very first fetch, which is how the inter-page sleep also lands
     between the source URLs of a multi-URL site.
+
+    from_preorder_url says this URL came from the config's preorder_urls; it
+    reaches both the parser (where it outranks every availability form) and the
+    listings row (where the column records it for the event diff).
     """
     site_name = config.get("site_name", source_url)
     currency = _currency_for(source_url)
@@ -163,7 +173,7 @@ def _scrape_source_url(
                 exhausted_pages = True
                 break
 
-        products = scrape_page(html, config)
+        products = scrape_page(html, config, from_preorder_url=from_preorder_url)
         pages_fetched += 1
 
         if not products:
@@ -188,6 +198,7 @@ def _scrape_source_url(
                 availability=p.get("availability", "unknown"),
                 availability_text=p.get("availability_text"),
                 run_id=run_id,
+                from_preorder_url=from_preorder_url,
             )
 
         products_seen.extend(products)
@@ -218,8 +229,9 @@ def run_site(
 ) -> None:
     """Scrape one site and persist its listings and the events they imply.
 
-    A config may name one source URL ("source_url") or several ("source_urls");
-    each is paginated independently and all of them feed the same site identity.
+    A config may name one source URL ("source_url") or several ("source_urls"),
+    plus any number of preorder category URLs ("preorder_urls"); each is
+    paginated independently and all of them feed the same site identity.
 
     run_id is normally supplied by run_all_sites() so every site in one batch
     shares a run. When called standalone it opens (and closes) its own run.
@@ -239,9 +251,10 @@ def run_site(
         # Snapshot state before this run's upserts for event diffing.
         pre_state = db.get_listing_state(conn, site_id)
 
-        for i, source_url in enumerate(site_source_urls):
+        for i, (source_url, is_preorder) in enumerate(tagged_source_urls(config)):
             products, pages = _scrape_source_url(
-                conn, config, site_id, run_id, source_url, sleep_first=i > 0
+                conn, config, site_id, run_id, source_url, sleep_first=i > 0,
+                from_preorder_url=is_preorder,
             )
             all_products.extend(products)
             pages_fetched += pages
