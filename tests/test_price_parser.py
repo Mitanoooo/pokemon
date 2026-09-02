@@ -157,3 +157,23 @@ def test_default_ceiling_unchanged_without_override():
 def test_peliparatiisi_comma_decimal_not_multiplied():
     # Peliparatiisi uses Finnish comma-decimal; must yield 39.9 not 3990.0
     assert parse_price("€39,90 EUR", {"site_name": "Peliparatiisi"}) == 39.90
+
+
+# ── comma as a thousands separator (Shopify's English money format) ───────────
+
+def test_comma_thousands_with_kr_suffix():
+    # spelparken.se prints "5,499 kr" for 5499 kr, not 5.499
+    assert parse_price("5,499 kr", {}) == 5499.0
+
+def test_comma_thousands_smallest_form():
+    assert parse_price("1,049 kr", {}) == 1049.0
+
+def test_comma_thousands_two_groups():
+    assert parse_price("15,199 kr", {"max_price": 20000}) == 15199.0
+
+def test_two_decimals_after_a_comma_is_still_a_decimal():
+    """The rule keys on exactly three digits, so ordinary prices are untouched."""
+    assert parse_price("49,90 kr", {}) == 49.90
+
+def test_one_digit_after_a_comma_is_a_decimal():
+    assert parse_price("39,9 €", {}) == 39.9

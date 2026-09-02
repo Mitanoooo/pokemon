@@ -68,6 +68,12 @@ def parse_price(raw_text: str, config: dict) -> Optional[float]:
     if config.get("decimal_separator", "comma") == "dot":
         # dot is already the decimal separator; remove any commas (thousands)
         last_token = last_token.replace(",", "")
+    elif re.fullmatch(r"\d{1,3}(,\d{3})+", last_token):
+        # A comma followed by exactly three digits, with nothing else in the
+        # token, is a thousands group rather than a decimal: spelparken.se prints
+        # "5,499 kr" for 5499 kr. No shop prices anything to three decimals, and
+        # the SEK guard lets a wrong reading through, so 5499 landed as 5.499.
+        last_token = last_token.replace(",", "")
     else:
         # comma is the decimal separator; remove any dots (thousands), swap comma → dot
         last_token = last_token.replace(".", "")
