@@ -2,18 +2,19 @@
   "site_name": "Blockhouse Games",
   "source_url": "https://blockhousegames.net/collections/pokemon-tcg",
   "method": "css",
-  "availability": {
-    "presence": {
-      "selector": ".product-item__inventory",
-      "present": "in_stock",
-      "absent": "out_of_stock"
-    }
-  },
   "selectors": {
     "product_container": "div.product-item.product-item--vertical",
     "product_name": ".product-item__title",
     "price": ".product-item__price-list .price",
     "product_url": ".product-item__title"
+  },
+  "availability": {
+    "selector": ".product-item__inventory",
+    "text_map": {
+      "Loppuunmyyty": "out_of_stock",
+      "Saatavilla": "in_stock"
+    },
+    "default": "unknown"
   },
   "pagination": {
     "type": "url_pattern",
@@ -22,5 +23,5 @@
     "max_pages": 2
   },
   "confidence": "medium",
-  "notes": "Shopify (Impulse-family) theme, requests+BS4 works — 29 products across 2 pages (page 1 has no ?page=1 suffix). Price element contains a 'visually-hidden' prefix span (Alennushinta/Normaalihinta) before the amount, e.g. '€59,90 EUR' — strip the hidden-label text. Confirmed in-stock classes: inventory--high and inventory--low, both mean in stock, text like 'Saatavilla 49' or 'Vain 1 jäljellä'. One product was observed as sold out ('Loppuunmyyty') via live browser render but the same product's static HTML fetch (curl) a few minutes later did not include it at all in the 24/29 listing — could not confirm in raw HTML whether sold-out items keep the .product-item__inventory span with different text or drop it entirely. Scraper should treat products missing .product-item__inventory as out of stock, but this needs live validation against an actual out-of-stock item before trusting it."
+  "notes": "Shopify (Impulse-family) theme, requests+BS4 works — 29 products across 2 pages (page 1 has no ?page=1 suffix). Price element contains a 'visually-hidden' prefix span (Alennushinta/Normaalihinta) before the amount, e.g. '€59,90 EUR' — strip the hidden-label text. Confirmed in-stock classes: inventory--high and inventory--low, both mean in stock, text like 'Saatavilla 49' or 'Vain 1 jäljellä'. One product was observed as sold out ('Loppuunmyyty') via live browser render but the same product's static HTML fetch (curl) a few minutes later did not include it at all in the 24/29 listing — could not confirm in raw HTML whether sold-out items keep the .product-item__inventory span with different text or drop it entirely. Scraper should treat products missing .product-item__inventory as out of stock, but this needs live validation against an actual out-of-stock item before trusting it. Ticket 18: availability by text_map on '.product-item__inventory' ('Loppuunmyyty' / 'Saatavilla'); the earlier presence check read sold-out cards as in stock because that element is present in both states. Checked against /collections/all?sort_by=best-selling (12 in stock, 12 sold out). The configured Pokemon collection carries 0 sold-out products out of 28, so treat this site as tracked in-stock-only."
 }

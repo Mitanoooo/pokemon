@@ -8,18 +8,22 @@
     "https://poromagia.com/fi/catalogue/category/pokemon/pokemon-tuotepakkaukset/pokemon-tinit_310/"
   ],
   "method": "css",
-  "availability": {
-    "presence": {
-      "selector": ".instock.availability",
-      "present": "in_stock",
-      "absent": "out_of_stock"
-    }
-  },
   "selectors": {
     "product_container": "article.product_line",
     "product_name": "h3 a",
     "price": ".price_color",
     "product_url": "h3 a"
+  },
+  "availability": {
+    "selector": "p.availability",
+    "text_map": {
+      "Julkaisupäivä": "preorder"
+    },
+    "presence": {
+      "selector": ".instock.availability",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
   },
   "pagination": {
     "type": "url_pattern",
@@ -28,5 +32,5 @@
     "max_pages": 8
   },
   "confidence": "high",
-  "notes": "Page shows a 6-item 'SUOSITTUA TÄSSÄ KATEGORIASSA' (popular) widget using a different markup (article.product_pod) ABOVE the real listing — ignore that widget. The real listing ('76 osumaa - näytetään 1 - 20') uses article.product_line and is paginated 20/page across 4 pages (?page=1..4)."
+  "notes": "Page shows a 6-item 'SUOSITTUA TÄSSÄ KATEGORIASSA' (popular) widget using a different markup (article.product_pod) ABOVE the real listing — ignore that widget. The real listing ('76 osumaa - näytetään 1 - 20') uses article.product_line and is paginated 20/page across 4 pages (?page=1..4). Ticket 18: 'p.availability' reads 'Julkaisupäivä <date>' for preorders (2 on the current listing); the WooCommerce '.instock.availability' element decides the rest."
 }

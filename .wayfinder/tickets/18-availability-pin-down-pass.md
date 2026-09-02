@@ -34,7 +34,51 @@ Unknown share alone is not enough to clear a site: all 10 configs with a saved f
 
 **Tests:** per-site fixture tests are added only for sites whose config needed a non-obvious mapping; the rest are covered by ticket 15's parser tests plus the probe run.
 
-**Status: OPEN**
+**Status: DONE**
+
+Result (`.scratch/tracker-refocus/availability-pass.md`): 27 of the 29 enabled configs carry
+an availability block checked against live HTML. `probe --all` puts every one of them at 0%
+unknown. karkkainen.com lost its block on purpose — all 57 cards report `OutOfStock` in
+Lipscore markup, including items its own product pages call in stock — so it is the one site
+that reads as not tracked, with the reason in its `notes` and in the deliverable.
+
+One site does not fit either end of the bar: kevinshobbyshop.com answers HTTP 403 to every
+request from this network, front page included, so its block could not be checked and its
+`--all` line reads 0 listings. Its class map is the WooCommerce default, which is the best
+guess available without the HTML; dropping the block would only make an unchecked site look
+deliberately untracked. It needs a re-run from the server, which is where several other
+configs already wait for a reachability check.
+
+Two `[no matches: ...]` markers remain, both eyeballed: God of Cards and JR Kodintavaratalo are
+negative markers on all-in-stock Pokemon listings, verified against the unfiltered collection
+(27/5) and /lego (14/10) respectively. Kevin's Hobby Shop's line carries the `[HTTP 403 ...]`
+marker instead, which is the fetch failure, not an unmatched selector.
+
+Blocks fixed rather than written: prisma.fi's `text_map` selector matched nothing so every
+listing read in stock, blockhousegames.net's presence check read sold-out cards as in stock
+(the element is on both states), and fantasialinna.com's `.in-stock` selector from the table
+above does not exist on the live page (the state is `div.stock` text). Preorder now reads as
+preorder on five sites that showed none: korttistoppi (22), maxgaming (10), pelimies (6),
+poromagia (2), swagykarp (8).
+
+Six sites are tracked in-stock-only, recorded as such because their split looks like perfect
+coverage and is not: blockhousegames.net, ellimadelli.fi, godofcards.com, muksumassi.fi,
+muovijalelu.fi, pelimies.fi. Their listing pages never show a sold-out product.
+
+Two mappings were rejected on the evidence: porvoonpelikauppa's `Julkaisu <date>` free text
+(dates that have passed are still shown, so it would strand released products in preorder) and
+the "ennakko" wording in product names at ellimadelli and peliparatiisi (nothing in the
+pipeline reads names).
+
+Two dead keys removed: flea.fi and godofcards.com set `"default": "unknown"` under a presence
+block that sets both `present` and `absent`, so nothing could reach the default.
+
+One parser change came out of the pass: `container_class_map` recorded the container's whole
+class list as `availability_text`, and on swagykarp's ~20-class cards the 120-char cap cut off
+the class that decided the state. It now falls back to the matched class alone.
+
+Tests: `tests/test_availability_configs.py`, 23 cases over 8 sites, each fixture a saved page
+trimmed to a few cards per state (12-32 kB), plus the untracked-karkkainen guard.
 
 Blocking: nothing
 Blocked by: 16

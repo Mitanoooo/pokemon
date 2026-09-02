@@ -9,3 +9,8 @@ logs/
 # Mapping-era batch output. The pipeline that produced these is gone (ticket
 # 14); the leftovers in the repo root must not come back in a `git add -A`.
 batch_*.csv
+
+# Ticket 18 cached the first pages of every enabled site under
+# .scratch/tracker-refocus/pages/ so the availability pass could re-run its
+# census offline. 30 MB of saved shop HTML, re-creatable with fetch_pages.py.
+.scratch/tracker-refocus/pages/

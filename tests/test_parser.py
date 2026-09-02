@@ -162,6 +162,15 @@ def test_container_class_map_unavailable():
     assert detect_availability(el, CLASS_CFG)[0] == "out_of_stock"
 
 
+def test_container_class_map_records_the_matched_class_when_the_list_is_long():
+    """swagykarp.fi cards carry ~20 classes and "instock" is not among the first
+    120 chars, so the whole list would truncate the one class that decided."""
+    classes = "ast-grid-common-col ast-full-width " + " ".join(
+        f"product_tag-{n}" for n in range(12)) + " instock"
+    el = make_el(f'<li class="{classes}">')
+    assert detect_availability(el, CLASS_CFG) == ("in_stock", "instock")
+
+
 def test_container_class_map_no_matching_class_falls_through_to_default():
     el = make_el('<li class="product">')
     assert detect_availability(el, CLASS_CFG) == ("unknown", None)

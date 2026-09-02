@@ -43,6 +43,21 @@ python -m scraper.probe site_configs/tcgkauppa.fi.json --html-file page.html
 python -m scraper.probe --all      # one coverage line per site
 ```
 
+## Availability coverage after ticket 18
+
+Of the 29 enabled configs, 27 carry an `availability` block checked against live
+HTML, 1 (`kevinshobbyshop.com`) carries an unchecked one because the shop answers
+HTTP 403 to every request from here, and 1 (`karkkainen.com`) deliberately has no
+block: its listing cards all report `OutOfStock` in Lipscore markup, including
+items its own product pages call in stock, so the site reads as not tracked.
+`probe --all` puts every configured site at 0% unknown.
+
+Six sites are **tracked in-stock-only** — their listing pages never show a
+sold-out product, so an all-in-stock split there says nothing about what has sold
+out: `blockhousegames.net`, `ellimadelli.fi`, `godofcards.com`, `muksumassi.fi`,
+`muovijalelu.fi`, `pelimies.fi`. The per-site evidence is in
+`.scratch/tracker-refocus/availability-pass.md`.
+
 ## High confidence (21)
 
 - casagrande.fi — Casagrande

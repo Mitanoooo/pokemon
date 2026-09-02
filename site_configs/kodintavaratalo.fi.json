@@ -8,6 +8,13 @@
     "price": "strong.normal-price",
     "product_url": "a.item-link"
   },
+  "availability": {
+    "presence": {
+      "selector": ".out-of-stock",
+      "present": "out_of_stock",
+      "absent": "in_stock"
+    }
+  },
   "pagination": {
     "type": "none",
     "selector": null,
@@ -15,5 +22,5 @@
     "max_pages": 1
   },
   "confidence": "medium",
-  "notes": "24 products, all on one page (no pagination element found after the .item-grid container). No out-of-stock indicator observed anywhere in the markup — every one of the 24 cards has an identical 'Lisää ostoskoriin' add-to-cart form, so stock status cannot be detected from this listing page; would need to check the product detail page for a stock/availability marker instead. Price is plain '37,95 €' format inside strong.normal-price — no cleanup needed."
+  "notes": "24 products, all on one page (no pagination element found after the .item-grid container). No out-of-stock indicator observed anywhere in the markup — every one of the 24 cards has an identical 'Lisää ostoskoriin' add-to-cart form, so stock status cannot be detected from this listing page; would need to check the product detail page for a stock/availability marker instead. Price is plain '37,95 €' format inside strong.normal-price — no cleanup needed. Ticket 18: presence of '.out-of-stock' marks a sold-out card. The Pokemon listing is all in stock, so this was checked on /lego, which reads 14 in stock and 10 sold out."
 }

@@ -8,6 +8,17 @@
     "price": ".tt-price span:first-child",
     "product_url": "h2.tt-title a"
   },
+  "availability": {
+    "selector": ".tt-label-our-stock",
+    "text_map": {
+      "Tilapäisesti loppu": "out_of_stock"
+    },
+    "presence": {
+      "selector": "form[action='/cart/add']",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "pagination": {
     "type": "url_pattern",
     "selector": null,
@@ -15,5 +26,5 @@
     "max_pages": 5
   },
   "confidence": "high",
-  "notes": "Shopify store using the 'Turbo'/tt- prefixed theme. Product cards render 9 per page; a 'NÄYTÄ LISÄÄ' (show more) link on-page reveals the ?page={page} pattern (confirmed via direct fetch of page=1/2/3, each returning 9 distinct products with page 3 also fully populated, so real page count is >3 — set max_pages conservatively at 5, scraper should keep paging while product_container count stays at 9 and titles are new). Price format '€54,99' (euro symbol BEFORE the number, unlike most other Finnish shops). No sold-out/out-of-stock class or text found among sampled products, so in_stock left null — cart form/button presence (form[action='/cart/add']) could be used as an in-stock proxy if needed. A cookie-consent modal blocks the page on first load and must be dismissed (clicked 'Hyväksy') before content is interactable, though the product HTML itself is present in the initial page source regardless."
+  "notes": "Shopify store using the 'Turbo'/tt- prefixed theme. Product cards render 9 per page; a 'NÄYTÄ LISÄÄ' (show more) link on-page reveals the ?page={page} pattern (confirmed via direct fetch of page=1/2/3, each returning 9 distinct products with page 3 also fully populated, so real page count is >3 — set max_pages conservatively at 5, scraper should keep paging while product_container count stays at 9 and titles are new). Price format '€54,99' (euro symbol BEFORE the number, unlike most other Finnish shops). No sold-out/out-of-stock class or text found among sampled products, so in_stock left null — cart form/button presence (form[action='/cart/add']) could be used as an in-stock proxy if needed. A cookie-consent modal blocks the page on first load and must be dismissed (clicked 'Hyväksy') before content is interactable, though the product HTML itself is present in the initial page source regardless. Ticket 18: '.tt-label-our-stock' says 'Tilapäisesti loppu' on sold-out cards; everything else falls to the add-to-cart form, which is absent when the item cannot be bought. The block carries no `default`: the presence check sets both `present` and `absent`, so nothing can reach one."
 }

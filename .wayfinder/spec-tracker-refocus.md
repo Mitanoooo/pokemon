@@ -141,7 +141,7 @@ Every key is optional. `detect_availability(container_el, config, from_preorder_
 0. `from_preorder_url` is 1 → `preorder`, `availability_text` = `"(preorder url)"`, whatever the badge says. Ticket 17 moved this ahead of the forms: a block carrying both `present` and `absent` always resolves, so ranked last the flag was dead for the 14 `presence` sites, and the audit found that every added preorder URL badges its items as plain in-stock or sold-out. A site with no `availability` block at all still reads `unknown`; only `listings.from_preorder_url` records the provenance there.
 1. `text_map` against the text of every element matching `selector`. Text is casefolded and whitespace-collapsed; keys are matched as substrings, longest key first, so `"Ennakkotilaus 12.9.2026"` still resolves. `availability_text` is the matched element's raw text.
 2. `presence` on its own selector.
-3. `container_class_map` against the container's own class list. `availability_text` is the class list joined by spaces.
+3. `container_class_map` against the container's own class list. `availability_text` is the class list joined by spaces, or the matched class alone when the joined list is longer than the 120-char cap (ticket 18: swagykarp.fi cards carry ~20 classes and the deciding one sat past the cap).
 4. `attribute` on the element matching `selector` (or the container if no selector).
 5. `default`, normally `unknown`.
 
@@ -217,5 +217,5 @@ Audit deliverable: `.scratch/tracker-refocus/preorder-urls.md`, one line per sit
 
 - Dropping `price_readings` removes the only table that grows without bound, so the retention job the earlier plan needed is no longer necessary. `updates` is capped at 30 days and `listings` is bounded by shop catalogue size (2,904 rows today).
 - `availability_text` exists so that an availability pass can be redone from stored data. Any per-site badge fix should be checked against it before re-scraping.
-- The 17 untracked sites are the reason `back_in_stock` looks rare (54 events ever). Tickets 16 and 18 are the ones that make the second signal real; everything else is scaffolding around it.
+- The 17 untracked sites were the reason `back_in_stock` looked rare (54 events ever). After ticket 18, 27 of the 29 enabled configs carry an availability block checked against live HTML; the exceptions are kevinshobbyshop.com (HTTP 403 from here, block unchecked) and karkkainen.com (no usable signal on the listing, deliberately untracked). Six of the 27 are tracked in-stock-only: their listings never show a sold-out product, so their all-in-stock split is not coverage of sold-out state. Per-site evidence: `.scratch/tracker-refocus/availability-pass.md`.
 - No config mentions ennakkotilaus today, so ticket 17 is not a coverage improvement to an existing signal, it is the whole signal.

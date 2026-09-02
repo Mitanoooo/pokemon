@@ -9,6 +9,14 @@
     "price": ".price .current",
     "product_url": ".name a"
   },
+  "availability": {
+    "selector": "div.stock",
+    "text_map": {
+      "Varastossa": "in_stock",
+      "Väliaikaisesti loppu": "out_of_stock"
+    },
+    "default": "unknown"
+  },
   "pagination": {
     "type": "url_pattern",
     "selector": null,
@@ -16,5 +24,5 @@
     "max_pages": 6
   },
   "confidence": "high",
-  "notes": "CS-Cart platform. Page shows numbered pagination 1-6 confirmed via visible page links (?page=2..6). Price is split into currency symbol and number spans (<span itemprop=\"priceCurrency\">€</span><span itemprop=\"price\" content=\"49.90\">49.90</span>) inside .price .current - concatenate or use the itemprop=price content attribute for a clean numeric value. Stock text is 'Varastossa' (in stock); out-of-stock items would presumably use a different class (not observed - a 'Loppuneet tuotteet' filter checkbox exists to include/exclude sold-out items, defaulting to include them, but only in-stock items appeared on page 1)."
+  "notes": "CS-Cart platform. Page shows numbered pagination 1-6 confirmed via visible page links (?page=2..6). Price is split into currency symbol and number spans (<span itemprop=\"priceCurrency\">€</span><span itemprop=\"price\" content=\"49.90\">49.90</span>) inside .price .current - concatenate or use the itemprop=price content attribute for a clean numeric value. Stock text is 'Varastossa' (in stock); out-of-stock items would presumably use a different class (not observed - a 'Loppuneet tuotteet' filter checkbox exists to include/exclude sold-out items, defaulting to include them, but only in-stock items appeared on page 1). Ticket 18: the state lives in 'div.stock' as 'Varastossa' or 'Väliaikaisesti loppu'; the old '.in-stock' selector matched nothing on the live pages. Page 3 of the listing reads 10 in stock, 2 sold out."
 }

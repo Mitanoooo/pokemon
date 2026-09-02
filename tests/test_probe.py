@@ -12,6 +12,7 @@ TCGKAUPPA_CONFIG = "site_configs/tcgkauppa.fi.json"
 TCGKAUPPA_FIXTURE = "tests/fixtures/tcgkauppa.fi/page1.html"
 KARKKAINEN_CONFIG = "site_configs/karkkainen.com.json"
 KARKKAINEN_FIXTURE = "tests/fixtures/karkkainen.com/page1.html"
+PRISMA_FIXTURE = "tests/fixtures/prisma.fi/page1.html"
 
 
 def census_for(config_path: str, fixture: str, limit: int = 5) -> Census:
@@ -71,21 +72,36 @@ def test_cli_prints_split_and_unknown_share(capsys):
     assert "Pokémon Abyss Eye Japanese Booster (M5)" in out
 
 
-def test_selector_that_matches_nothing_is_called_out(capsys):
-    """prisma.fi's text_map selector matches nothing, so its 100% in_stock is a lie.
+def test_selector_that_matches_nothing_is_called_out(capsys, tmp_path):
+    """A wrong selector produces a confident-looking split — every listing takes
+    the default or the presence `absent` state — which is the failure the split
+    alone cannot show.
 
-    A wrong selector produces a confident-looking split (every listing takes the
-    default or the presence `absent` state), which is the failure the split alone
-    cannot show.
+    prisma.fi was that case until ticket 18 corrected the selector to
+    `.bg-color-background-error`, so this rebuilds the broken config it had.
     """
-    census = census_for("site_configs/prisma.fi.json", "tests/fixtures/prisma.fi/page1.html")
+    config = json.loads(Path("site_configs/prisma.fi.json").read_text())
+    config["availability"]["selector"] = ".background-error p"
+    broken = tmp_path / "prisma-broken.json"
+    broken.write_text(json.dumps(config))
+
+    census = probe_site(config, html_file=PRISMA_FIXTURE, limit=5)
     assert census.split["in_stock"] == 33
     assert census.unknown_share == 0.0
     assert probe.unmatched_selectors(census) == [".background-error p"]
     assert "[no matches: .background-error p]" in format_all_line(census)
 
-    main(["site_configs/prisma.fi.json", "--html-file", "tests/fixtures/prisma.fi/page1.html"])
+    main([str(broken), "--html-file", PRISMA_FIXTURE])
     assert "NO MATCHES: configured selector '.background-error p'" in capsys.readouterr().out
+
+
+def test_corrected_selector_reads_the_same_page_as_a_mix():
+    """The same fixture under the shipped config: the marker goes away and the
+    sold-out cards show up. The exact split is pinned in
+    tests/test_availability_configs.py."""
+    census = census_for("site_configs/prisma.fi.json", PRISMA_FIXTURE)
+    assert census.split["out_of_stock"] > 0
+    assert probe.unmatched_selectors(census) == []
 
 
 def test_working_selector_is_not_called_out():
@@ -96,10 +112,12 @@ def test_working_selector_is_not_called_out():
 
 
 def test_presence_selector_is_probed_and_labelled(capsys):
-    """A presence block keeps its selector under presence.selector, not at the top."""
+    """A presence block keeps its selector under presence.selector, not at the top,
+    so both it and the block's top-level text_map selector get probed."""
     config_path = "site_configs/poromagia.com.json"
     census = census_for(config_path, "tests/fixtures/poromagia.com/page1.html")
-    assert probe.configured_selectors(census.config) == [".instock.availability"]
+    assert probe.configured_selectors(census.config) == ["p.availability",
+                                                        ".instock.availability"]
     assert census.badge_text[".instock.availability"]
 
     main([config_path, "--html-file", "tests/fixtures/poromagia.com/page1.html"])

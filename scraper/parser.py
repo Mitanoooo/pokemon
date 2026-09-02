@@ -117,10 +117,12 @@ def detect_availability(
         classes = container_el.get("class") or []
         for cls, state in class_map.items():
             if cls in classes:
-                return (
-                    _state(state, config),
-                    " ".join(classes)[:AVAILABILITY_TEXT_CAP],
-                )
+                joined = " ".join(classes)
+                # The whole list is the more useful diagnostic, but only when it
+                # fits: swagykarp.fi cards carry ~20 classes and the cap would
+                # cut off the very class that decided the state.
+                text = joined if len(joined) <= AVAILABILITY_TEXT_CAP else cls
+                return _state(state, config), text[:AVAILABILITY_TEXT_CAP]
 
     attribute = block.get("attribute")
     if attribute:

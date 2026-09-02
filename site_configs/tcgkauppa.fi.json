@@ -20,18 +20,19 @@
     "https://www.tcgkauppa.fi/ennakkotilaukset/"
   ],
   "method": "css",
-  "availability": {
-    "container_class_map": {
-      "instock": "in_stock",
-      "outofstock": "out_of_stock",
-      "unavailable": "out_of_stock"
-    }
-  },
   "selectors": {
     "product_container": "li.product",
     "product_name": "h3.product-title a",
     "price": "span.price",
     "product_url": "h3.product-title a"
+  },
+  "availability": {
+    "container_class_map": {
+      "instock": "in_stock",
+      "outofstock": "out_of_stock",
+      "insufficientstock": "out_of_stock",
+      "unavailable": "out_of_stock"
+    }
   },
   "pagination": {
     "type": "url_pattern",
@@ -40,5 +41,5 @@
     "max_pages": 5
   },
   "confidence": "high",
-  "notes": "Standard WooCommerce (Avada/Fusion theme). Stock status is a WooCommerce class ('instock'/'outofstock') on the product_container li itself, not a separate nested element — check the container's own class list rather than querying '.instock' as a descendant. Page 1 has no /page/1/ suffix; pages 2-5 use /page/N/. Ticket 17: '/ennakkotilaukset/' is the shop's preorder category, 27 products at audit time of which 20 are Pokémon and the rest Lorcana/World of Tanks — the shop offers no way to scope it (a '?tuote-osasto=pokemon' filter is ignored, '/tuote-osasto/pokemon/?product_cat=ennakkotilaukset' 404s), so those few non-Pokémon listings are the price of preorder coverage here. '/ennakkotilaukset/page/2/' returns an empty page, which ends pagination cleanly."
+  "notes": "Standard WooCommerce (Avada/Fusion theme). Stock status is a WooCommerce class ('instock'/'outofstock') on the product_container li itself, not a separate nested element — check the container's own class list rather than querying '.instock' as a descendant. Page 1 has no /page/1/ suffix; pages 2-5 use /page/N/. Ticket 17: '/ennakkotilaukset/' is the shop's preorder category, 27 products at audit time of which 20 are Pokémon and the rest Lorcana/World of Tanks — the shop offers no way to scope it (a '?tuote-osasto=pokemon' filter is ignored, '/tuote-osasto/pokemon/?product_cat=ennakkotilaukset' 404s), so those few non-Pokémon listings are the price of preorder coverage here. '/ennakkotilaukset/page/2/' returns an empty page, which ends pagination cleanly. Ticket 18: 'insufficientstock' added to the class map; it appears on 28 of 132 cards and always alongside 'outofstock' today, so mapping it changes nothing now but keeps a card that carries it alone out of unknown."
 }

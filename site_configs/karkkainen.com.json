@@ -2,13 +2,6 @@
   "site_name": "Karkkainen.com verkkokauppa",
   "source_url": "https://www.karkkainen.com/verkkokauppa/kerailykortit",
   "method": "css",
-  "availability": {
-    "presence": {
-      "selector": ".lipscore-rating-small[data-ls-availability=\"InStock\"]",
-      "present": "in_stock",
-      "absent": "out_of_stock"
-    }
-  },
   "decimal_separator": "dot",
   "selectors": {
     "product_container": "[data-testid=\"product-card-container\"]",
@@ -24,5 +17,5 @@
     "page_size": 60
   },
   "confidence": "medium",
-  "notes": "React/MUI storefront but server-side rendered (requests+BS4 works, no JS execution needed). This is the general 'Keräilykortit' (collectible cards) category, not Pokemon-specific — of 66 total products only 12 are tagged Pokemon (see 'Tuotemerkki: Pokemon (12)' filter facet); a real scraper must filter by the 'Pokemon' brand facet or filter client-side on product name. Price is NOT in the visible text (loaded async, page shows a spinner placeholder) — instead read the numeric 'data-ls-price' attribute (e.g. data-ls-price=\"6.49\") off the .lipscore-rating-small span, which also carries 'data-ls-availability' (\"InStock\"/\"OutOfStock\") for stock status and 'data-ls-product-url' for the absolute product URL. Pagination uses an offset query param (?offset=60 for page 2) rather than a page number — 60 products per page, 66 total = 2 pages; url_pattern placeholder here is the raw offset value, not a page index (page N offset = (N-1)*60)."
+  "notes": "React/MUI storefront but server-side rendered (requests+BS4 works, no JS execution needed). This is the general 'Keräilykortit' (collectible cards) category, not Pokemon-specific — of 66 total products only 12 are tagged Pokemon (see 'Tuotemerkki: Pokemon (12)' filter facet); a real scraper must filter by the 'Pokemon' brand facet or filter client-side on product name. Price is NOT in the visible text (loaded async, page shows a spinner placeholder) — instead read the numeric 'data-ls-price' attribute (e.g. data-ls-price=\"6.49\") off the .lipscore-rating-small span, which also carries 'data-ls-availability' (\"InStock\"/\"OutOfStock\") for stock status and 'data-ls-product-url' for the absolute product URL. Pagination uses an offset query param (?offset=60 for page 2) rather than a page number — 60 products per page, 66 total = 2 pages; url_pattern placeholder here is the raw offset value, not a page index (page N offset = (N-1)*60). Ticket 18: availability block dropped, so the site reads as not tracked. Every listing card carries data-ls-availability=\"OutOfStock\" (all 57, including items whose product page says InStock), and the cards are otherwise identical, so the listing page has no usable state signal."
 }

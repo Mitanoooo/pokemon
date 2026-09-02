@@ -8,6 +8,17 @@
     "price": "sale-price",
     "product_url": ".product-card__title a"
   },
+  "availability": {
+    "selector": ".badge--sold-out",
+    "text_map": {
+      "Sold out": "out_of_stock"
+    },
+    "presence": {
+      "selector": "form.shopify-product-form",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
   "pagination": {
     "type": "url_pattern",
     "selector": "[data-load-more-button]",
@@ -15,5 +26,5 @@
     "max_pages": 24
   },
   "confidence": "medium",
-  "notes": "Shopify store using a custom web-component theme ('<product-card>', '<price-list>', '<sale-price>', '<compare-at-price>' custom elements). IMPORTANT: '<product-card>' (and its child classes like '.product-card__title') also appear duplicated inside a header navigation-preview widget near the top of the page, outside the actual collection grid — always scope selectors under '.product-list' (the collection grid container) to avoid picking up those nav-preview cards. Price: always read the nested '<sale-price>' element (shows the effective/current price whether discounted or not); a sibling '<compare-at-price>' (struck-through original price) appears additionally only when the item is on sale — ignore it. No stock/availability indicator was found on the collection grid card itself (in_stock left null) despite a sidebar 'In stock only' filter checkbox existing — would need the product detail page or that filter to determine real stock. Pagination is a JS 'Load more' infinite-scroll button (not classic numbered links), but its 'data-next-url' attribute confirms a working '?page={page}' URL fallback; confirmed 775 total products at ~33 per initial page load, so max_pages is an ESTIMATE (~24) not fully paged through and verified — treat with lower confidence than other selector fields."
+  "notes": "Shopify store using a custom web-component theme ('<product-card>', '<price-list>', '<sale-price>', '<compare-at-price>' custom elements). IMPORTANT: '<product-card>' (and its child classes like '.product-card__title') also appear duplicated inside a header navigation-preview widget near the top of the page, outside the actual collection grid — always scope selectors under '.product-list' (the collection grid container) to avoid picking up those nav-preview cards. Price: always read the nested '<sale-price>' element (shows the effective/current price whether discounted or not); a sibling '<compare-at-price>' (struck-through original price) appears additionally only when the item is on sale — ignore it. No stock/availability indicator was found on the collection grid card itself (in_stock left null) despite a sidebar 'In stock only' filter checkbox existing — would need the product detail page or that filter to determine real stock. Pagination is a JS 'Load more' infinite-scroll button (not classic numbered links), but its 'data-next-url' attribute confirms a working '?page={page}' URL fallback; confirmed 775 total products at ~33 per initial page load, so max_pages is an ESTIMATE (~24) not fully paged through and verified — treat with lower confidence than other selector fields. Ticket 18: '.badge--sold-out' plus the product form give the state. The source URL carries filter.v.availability=1, so the listing itself is in-stock-only; sold-out items only appear on the unfiltered collection (27 in stock, 5 sold out there). The block carries no `default` for the same reason. Dropping `filter.v.availability=1` from the source URL would make sold-out items visible (the unfiltered collection reads 27 in stock, 5 sold out), but it would re-key the site row, so it is left for a coverage ticket."
 }

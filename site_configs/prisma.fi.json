@@ -3,7 +3,7 @@
   "source_url": "https://www.prisma.fi/tuotemerkit/pokemon-tcg",
   "method": "css",
   "availability": {
-    "selector": ".background-error p",
+    "selector": ".bg-color-background-error",
     "text_map": {
       "Ei saatavilla": "out_of_stock"
     },
@@ -22,5 +22,5 @@
     "max_pages": 1
   },
   "confidence": "high",
-  "notes": "Custom Next.js/S-kauppa storefront (not WooCommerce). All 33 products ('Tuotteita: 33') render in a single grid list (ul[data-test-id='brand-product-list'] > li[data-test-id^='products-list-item-<id>']) with no pagination controls found. Verified real selectors via DOM inspection (data-test-id attributes are stable): product_card = div[data-test-id^='product-card-'], product name+link = a[data-test-id='product-card-link'], price = div[data-test-id='product-card-price']. Out-of-stock items show a red badge (div with a background-error class containing a <p>Ei saatavilla</p>) inside the card; in_stock is left null since there's no positive in-stock marker - treat the ABSENCE of a <p> with exact text 'Ei saatavilla' inside the card as the in-stock signal. A 'Suosituimmat tuotteet' horizontal carousel also exists near the top of the page using the same a[data-test-id='product-card-link'] pattern but wrapped in a scrollable <ol> - scope selectors to ul[data-test-id='brand-product-list'] to avoid duplicate/overlapping matches from that carousel."
+  "notes": "Custom Next.js/S-kauppa storefront (not WooCommerce). All 33 products ('Tuotteita: 33') render in a single grid list (ul[data-test-id='brand-product-list'] > li[data-test-id^='products-list-item-<id>']) with no pagination controls found. Verified real selectors via DOM inspection (data-test-id attributes are stable): product_card = div[data-test-id^='product-card-'], product name+link = a[data-test-id='product-card-link'], price = div[data-test-id='product-card-price']. Out-of-stock items show a red badge (div with a background-error class containing a <p>Ei saatavilla</p>) inside the card; in_stock is left null since there's no positive in-stock marker - treat the ABSENCE of a <p> with exact text 'Ei saatavilla' inside the card as the in-stock signal. A 'Suosituimmat tuotteet' horizontal carousel also exists near the top of the page using the same a[data-test-id='product-card-link'] pattern but wrapped in a scrollable <ol> - scope selectors to ul[data-test-id='brand-product-list'] to avoid duplicate/overlapping matches from that carousel. Ticket 18: the text_map selector was '.background-error p', which never matched; the real class is 'bg-color-background-error'. The stored fixture now reads 29 in stock, 4 sold out instead of everything in stock."
 }
