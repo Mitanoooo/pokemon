@@ -23,6 +23,16 @@ Confidence counts: **21 high**, **16 medium**, **3 low**.
   `url_pattern`, `max_pages`, and (offset only) `page_size` (default 60).
 - `disabled` / `disabled_reason` — skip the site in a run.
 
+To write or fix an `availability` block, run the probe first — it prints the
+site's badge text, container classes and `data-*` values next to the split the
+current config produces:
+
+```
+python -m scraper.probe site_configs/tcgkauppa.fi.json [--url N] [--limit 5]
+python -m scraper.probe site_configs/tcgkauppa.fi.json --html-file page.html
+python -m scraper.probe --all      # one coverage line per site
+```
+
 ## High confidence (21)
 
 - casagrande.fi — Casagrande

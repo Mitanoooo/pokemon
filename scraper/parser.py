@@ -235,6 +235,27 @@ def _extract_url(container_el: Tag, config: dict) -> str:
     return el.get("href", "") or el.get("data-ls-product-url", "")
 
 
+def find_containers(soup: BeautifulSoup, config: dict) -> "list[Tag]":
+    """Every product container on a parsed page, honouring container_scope.
+
+    container_scope pre-filters the DOM (prisma.fi's carousel would otherwise
+    count as listings). A scope selector that matches nothing means no
+    containers, not a page-wide fallback.
+    """
+    container_sel = _sel(config, "product_container")
+    if not container_sel:
+        return []
+
+    scope_sel = config.get("container_scope")
+    if not scope_sel:
+        return soup.select(container_sel)
+
+    scope_el = soup.select_one(scope_sel)
+    if scope_el is None:
+        return []
+    return scope_el.select(container_sel)
+
+
 def scrape_page(
     html: str, config: dict, from_preorder_url: bool = False
 ) -> list[dict]:
@@ -251,18 +272,7 @@ def scrape_page(
     carousel exclusion).
     """
     soup = BeautifulSoup(html, "html.parser")
-    container_sel = _sel(config,"product_container")
-    if not container_sel:
-        return []
-
-    scope_sel = config.get("container_scope")
-    if scope_sel:
-        scope_el = soup.select_one(scope_sel)
-        if scope_el is None:
-            return []
-        containers = scope_el.select(container_sel)
-    else:
-        containers = soup.select(container_sel)
+    containers = find_containers(soup, config)
 
     if not containers:
         return []

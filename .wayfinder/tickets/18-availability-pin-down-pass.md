@@ -26,6 +26,8 @@ Two known-wrong migrated blocks to check early: `prisma.fi`'s `text_map` selecto
 
 **Acceptance bar:** `python -m scraper.probe --all` shows every site either under 5% `unknown` or with no `availability` block and a recorded reason. No site sits in the middle.
 
+Unknown share alone is not enough to clear a site: all 10 configs with a saved fixture already report 0% unknown, `prisma.fi` included, because a selector that matches nothing sends every listing to the `default` or the `presence` `absent` state. Ticket 16 added a `[no matches: <selector>]` marker to the `--all` line for that case, so read the acceptance bar as "under 5% unknown **and** no unmatched-selector marker". The marker also fires legitimately when a negative marker finds nothing on an all-in-stock page (`karkkainen.com`'s fixture, `porvoonpelikauppa.fi`), so each one needs an eyeball on the page, not a blanket fix.
+
 **Deliverable:** `.scratch/tracker-refocus/availability-pass.md`, one section per site: badge texts and classes found, the block written, resulting split, and for untracked sites the reason.
 
 **Watch for:** shops whose out-of-stock items are simply absent from the listing page. Those look like 100% `in_stock` coverage while actually tracking nothing, and their disappearing listings cannot be read as out of stock (ruled out in the spec's Out of Scope). Record them as tracked-in-stock-only in the deliverable so the coverage number is not read as more than it is.
