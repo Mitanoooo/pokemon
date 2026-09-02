@@ -62,14 +62,30 @@ def _priced_name_count(products: list[dict]) -> int:
     return len({p["raw_name"] for p in products if p.get("price") is not None})
 
 
+# The availability transitions worth an event, as (previous, new) -> event type.
+# "unknown" appears on neither side: a site with no availability block reads
+# unknown on every sighting, and pairing that with a real state would report the
+# config gap as a stock change. That is what replaced the old stock_mode guard.
+_TRANSITION_EVENTS = {
+    ("in_stock", "preorder"): "new_preorder",
+    ("out_of_stock", "preorder"): "new_preorder",
+    ("out_of_stock", "in_stock"): "back_in_stock",
+    ("preorder", "in_stock"): "back_in_stock",
+}
+
+
 def _build_update_events(
     site_id: int,
     run_id: int,
     products: list[dict],
     pre_state: dict,
-    availability_mode: Optional[str],
 ) -> list[dict]:
-    """Diff products seen this run against the pre-upsert state and return events."""
+    """Diff products seen this run against the pre-upsert state and return events.
+
+    The caller applies the first-run guard: an empty pre_state means a site whose
+    listings have never been recorded, and its whole catalogue must not land in
+    the feed as new.
+    """
     # Last occurrence of each raw_name wins (handles multi-page duplicates)
     deduped: dict[str, dict] = {}
     for p in products:
@@ -78,7 +94,8 @@ def _build_update_events(
     events = []
     for raw_name, p in deduped.items():
         new_price = p.get("price")
-        new_availability = p.get("availability")
+        new_availability = p.get("availability") or "unknown"
+        new_price_str = str(new_price) if new_price is not None else None
         old = pre_state.get(raw_name)
 
         base = {
@@ -88,38 +105,51 @@ def _build_update_events(
         }
 
         if old is None:
+            # A first sighting is one event or the other, never both: a preorder
+            # opening is the more specific thing to say about it.
             events.append({
                 **base,
-                "event_type": "new_listing",
+                "event_type": (
+                    "new_preorder" if new_availability == "preorder" else "new_listing"
+                ),
                 "old_value": None,
-                "new_value": str(new_price) if new_price is not None else None,
+                "new_value": new_price_str,
             })
-        else:
-            old_price = old.get("latest_price")
-            price_threshold = 1.0 if p.get("currency") == "SEK" else 0.01
-            if (old_price is not None and new_price is not None
-                    and abs(new_price - old_price) >= price_threshold):
-                # Direction is decided here rather than by a CAST in the UI
-                # query, so the updates(event_type, created_at) index can do
-                # the filtering.
-                events.append({
-                    **base,
-                    "event_type": "price_drop" if new_price < old_price else "price_rise",
-                    "old_value": str(old_price),
-                    "new_value": str(new_price),
-                })
+            continue
 
-            # A site with no availability block reads as all-unknown, so its
-            # every-run "unknown" must not look like a stock transition.
-            if (availability_mode
-                    and old.get("availability") == "out_of_stock"
-                    and new_availability == "in_stock"):
-                events.append({
-                    **base,
-                    "event_type": "back_in_stock",
-                    "old_value": None,
-                    "new_value": "in_stock",
-                })
+        old_price = old.get("latest_price")
+        old_availability = old.get("availability") or "unknown"
+        price_threshold = 1.0 if p.get("currency") == "SEK" else 0.01
+        if (old_price is not None and new_price is not None
+                and abs(new_price - old_price) >= price_threshold):
+            # Direction is decided here rather than by a CAST in the UI query,
+            # so the updates(event_type, created_at) index can do the filtering.
+            events.append({
+                **base,
+                "event_type": "price_drop" if new_price < old_price else "price_rise",
+                "old_value": str(old_price),
+                "new_value": new_price_str,
+            })
+
+        transition = _TRANSITION_EVENTS.get((old_availability, new_availability))
+        if transition == "new_preorder":
+            # Same shape as a first-sighting preorder: the price is the payload,
+            # so the operator can judge the preorder without opening the shop.
+            events.append({
+                **base,
+                "event_type": transition,
+                "old_value": None,
+                "new_value": new_price_str,
+            })
+        elif transition == "back_in_stock":
+            # The previous state rides along so a preorder going live on release
+            # day is distinguishable from an ordinary restock.
+            events.append({
+                **base,
+                "event_type": transition,
+                "old_value": old_availability,
+                "new_value": new_availability,
+            })
 
     return events
 
@@ -131,13 +161,18 @@ def _scrape_source_url(
     run_id: int,
     source_url: str,
     sleep_first: bool,
+    products_seen: list[dict],
     from_preorder_url: bool = False,
-) -> "tuple[list[dict], int]":
-    """Scrape every page of one source URL; return its products and page count.
+) -> int:
+    """Scrape every page of one source URL, appending its products to products_seen.
 
-    Listings are upserted page by page, as they are read. sleep_first jitters
-    before the very first fetch, which is how the inter-page sleep also lands
-    between the source URLs of a multi-URL site.
+    Returns the page count. Listings are upserted page by page, as they are read,
+    and the caller owns products_seen so that a page that fails mid-pagination
+    still leaves the earlier pages' products with it: those listings are already
+    committed, so their events have to be written or the change is lost.
+
+    sleep_first jitters before the very first fetch, which is how the inter-page
+    sleep also lands between the source URLs of a multi-URL site.
 
     from_preorder_url says this URL came from the config's preorder_urls; it
     reaches both the parser (where it outranks every availability form) and the
@@ -147,7 +182,6 @@ def _scrape_source_url(
     currency = _currency_for(source_url)
     urls = paginate(config, source_url)
 
-    products_seen: list[dict] = []
     pages_fetched = 0
     page_counts: list[int] = []
     exhausted_pages = False
@@ -202,6 +236,7 @@ def _scrape_source_url(
             )
 
         products_seen.extend(products)
+
         skipped = _null_price_count(products)
         if skipped:
             logger.warning(
@@ -221,7 +256,7 @@ def _scrape_source_url(
             site_name, pages_fetched, len(urls), source_url, page_counts[-1],
         )
 
-    return products_seen, pages_fetched
+    return pages_fetched
 
 
 def run_site(
@@ -251,24 +286,25 @@ def run_site(
         # Snapshot state before this run's upserts for event diffing.
         pre_state = db.get_listing_state(conn, site_id)
 
-        for i, (source_url, is_preorder) in enumerate(tagged_source_urls(config)):
-            products, pages = _scrape_source_url(
-                conn, config, site_id, run_id, source_url, sleep_first=i > 0,
-                from_preorder_url=is_preorder,
-            )
-            all_products.extend(products)
-            pages_fetched += pages
+        # _scrape_source_url commits its listings page by page, so a failure
+        # partway through leaves the earlier pages' rows updated. The events go in
+        # under `finally` for that reason: dropping them would leave the next run
+        # diffing against those updated rows, and the price drop or restock in
+        # between would never be reported at all.
+        try:
+            for i, (source_url, is_preorder) in enumerate(tagged_source_urls(config)):
+                pages_fetched += _scrape_source_url(
+                    conn, config, site_id, run_id, source_url, sleep_first=i > 0,
+                    products_seen=all_products, from_preorder_url=is_preorder,
+                )
+        finally:
+            # An empty pre_state is a brand-new site: record its catalogue silently.
+            if all_products and pre_state:
+                events = _build_update_events(site_id, run_id, all_products, pre_state)
+                if events:
+                    db.write_updates(conn, events)
 
         priced = _priced_name_count(all_products)
-
-        # Generate and persist update events for all products seen this run.
-        if all_products:
-            events = _build_update_events(
-                site_id, run_id, all_products, pre_state, availability_mode
-            )
-            if events:
-                db.write_updates(conn, events)
-
         if not priced:
             msg = "0 products across all pages"
             logger.warning("%s: pages=%d products=0 — %s", site_name, pages_fetched, msg)

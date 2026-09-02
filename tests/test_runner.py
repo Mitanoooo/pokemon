@@ -472,138 +472,173 @@ def test_run_site_resolves_real_relative_hrefs_to_absolute(conn):
 
 # ── update event generation ───────────────────────────────────────────────────
 
-def test_run_site_emits_new_listing_event_for_first_seen_product(conn):
-    cfg = _cfg()
+def _run_once(cfg, conn, products):
+    """One run of run_site serving the same product list on every page."""
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(1)):
+         patch("scraper.runner.scrape_page", return_value=products), \
+         patch("scraper.runner.time.sleep"):
         run_site(cfg, conn)
 
-    rows = conn.execute(
-        "SELECT * FROM updates WHERE event_type='new_listing'"
-    ).fetchall()
+
+def _listing(name="Box", price=9.99, availability="in_stock", currency="EUR"):
+    return {"raw_name": name, "price": price, "currency": currency,
+            "availability": availability, "product_url": ""}
+
+
+def _event_types(conn):
+    return [r["event_type"] for r in conn.execute("SELECT event_type FROM updates")]
+
+
+def test_run_site_first_run_emits_no_events_but_records_the_listings(conn):
+    """Adding a shop must not bury the feed under its whole catalogue."""
+    cfg = _cfg()
+    _run_once(cfg, conn, _products(3))
+
+    assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 3
+    assert conn.execute("SELECT COUNT(*) FROM updates").fetchone()[0] == 0
+
+
+def test_run_site_emits_new_listing_once_the_site_has_a_history(conn):
+    cfg = _cfg()
+    _run_once(cfg, conn, [_listing("Old Box")])
+    _run_once(cfg, conn, [_listing("Old Box"), _listing("New Box", price=19.99)])
+
+    rows = conn.execute("SELECT * FROM updates").fetchall()
     assert len(rows) == 1
-    assert rows[0]["raw_name"] == "Product 0"
+    assert rows[0]["event_type"] == "new_listing"
+    assert rows[0]["raw_name"] == "New Box"
+    assert rows[0]["new_value"] == "19.99"
+
+
+def test_run_site_first_sighting_of_a_preorder_emits_new_preorder_only(conn):
+    cfg = _cfg()
+    _run_once(cfg, conn, [_listing("Old Box")])
+    _run_once(cfg, conn, [_listing("Old Box"),
+                          _listing("Preorder Box", price=54.9, availability="preorder")])
+
+    rows = conn.execute("SELECT * FROM updates").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == "new_preorder"
+    assert rows[0]["raw_name"] == "Preorder Box"
+    assert rows[0]["new_value"] == "54.9"
+
+
+def test_run_site_in_stock_to_preorder_emits_new_preorder(conn):
+    cfg = _cfg()
+    _run_once(cfg, conn, [_listing(availability="in_stock")])
+    _run_once(cfg, conn, [_listing(availability="preorder")])
+
+    rows = conn.execute("SELECT * FROM updates").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == "new_preorder"
+    # Same payload shape as a first-sighting preorder: the price, nothing else
+    assert rows[0]["old_value"] is None
+    assert rows[0]["new_value"] == "9.99"
+
+
+def test_run_site_out_of_stock_to_in_stock_emits_back_in_stock(conn):
+    cfg = _cfg()
+    _run_once(cfg, conn, [_listing(availability="out_of_stock")])
+    _run_once(cfg, conn, [_listing(availability="in_stock")])
+
+    rows = conn.execute("SELECT * FROM updates").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == "back_in_stock"
+    assert rows[0]["old_value"] == "out_of_stock"
+
+
+def test_run_site_preorder_to_in_stock_emits_back_in_stock_naming_the_preorder(conn):
+    """Release day: the old state is what separates this from an ordinary restock."""
+    cfg = _cfg()
+    _run_once(cfg, conn, [_listing(availability="preorder")])
+    _run_once(cfg, conn, [_listing(availability="in_stock")])
+
+    rows = conn.execute("SELECT * FROM updates").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == "back_in_stock"
+    assert rows[0]["old_value"] == "preorder"
+
+
+def _event_names(conn):
+    return [r["raw_name"] for r in conn.execute("SELECT raw_name FROM updates")]
+
+
+def test_run_site_no_event_for_a_transition_out_of_unknown(conn):
+    """The control listing differs only in its old state, so it pins the rule."""
+    cfg = _cfg()
+    _run_once(cfg, conn, [_listing("Unreadable", availability="unknown"),
+                          _listing("Sold Out", availability="out_of_stock")])
+    _run_once(cfg, conn, [_listing("Unreadable", availability="in_stock"),
+                          _listing("Sold Out", availability="in_stock")])
+
+    assert _event_names(conn) == ["Sold Out"]
+
+
+def test_run_site_no_event_for_a_transition_into_unknown(conn):
+    cfg = _cfg()
+    _run_once(cfg, conn, [_listing("Badge Lost", availability="out_of_stock"),
+                          _listing("Restocked", availability="out_of_stock")])
+    _run_once(cfg, conn, [_listing("Badge Lost", availability="unknown"),
+                          _listing("Restocked", availability="in_stock")])
+
+    assert _event_names(conn) == ["Restocked"]
 
 
 def test_run_site_emits_price_rise_event_on_higher_price(conn):
     cfg = _cfg()
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(1)):
-        run_site(cfg, conn)
+    _run_once(cfg, conn, [_listing(price=9.99)])
+    _run_once(cfg, conn, [_listing(price=14.99)])
 
-    # Backdate the listing so the timestamps differ; makes second run distinct
-    conn.execute(
-        "UPDATE listings SET first_seen_at='2020-01-01 00:00:00', "
-        "last_seen_at='2020-01-01 00:00:00'"
-    )
-    conn.commit()
-
-    products_v2 = [{"raw_name": "Product 0", "price": 14.99,
-                    "currency": "EUR", "availability": "in_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_v2):
-        run_site(cfg, conn)
-
-    changes = conn.execute(
-        "SELECT * FROM updates WHERE event_type='price_rise'"
-    ).fetchall()
-    assert len(changes) == 1
-    assert changes[0]["old_value"] == "9.99"
-    assert changes[0]["new_value"] == "14.99"
+    rows = conn.execute("SELECT * FROM updates").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == "price_rise"
+    assert rows[0]["old_value"] == "9.99"
+    assert rows[0]["new_value"] == "14.99"
 
 
 def test_run_site_emits_price_drop_event_on_lower_price(conn):
     cfg = _cfg()
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(1)):
-        run_site(cfg, conn)
+    _run_once(cfg, conn, [_listing(price=9.99)])
+    _run_once(cfg, conn, [_listing(price=7.49)])
 
-    products_v2 = [{"raw_name": "Product 0", "price": 7.49,
-                    "currency": "EUR", "availability": "in_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_v2):
-        run_site(cfg, conn)
-
-    drops = conn.execute("SELECT * FROM updates WHERE event_type='price_drop'").fetchall()
-    assert len(drops) == 1
-    assert drops[0]["old_value"] == "9.99"
-    assert drops[0]["new_value"] == "7.49"
+    rows = conn.execute("SELECT * FROM updates").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == "price_drop"
+    assert rows[0]["old_value"] == "9.99"
+    assert rows[0]["new_value"] == "7.49"
 
 
 def test_run_site_no_event_when_price_unchanged(conn):
     cfg = _cfg()
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(1)):
-        run_site(cfg, conn)
+    _run_once(cfg, conn, [_listing("Steady"), _listing("Cheaper")])
+    # The second listing moves, so an empty feed here would fail the test too
+    _run_once(cfg, conn, [_listing("Steady"), _listing("Cheaper", price=5.0)])
 
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(1)):
-        run_site(cfg, conn)
-
-    # Only the initial new_listing; second run emits nothing (same price)
-    rows = conn.execute("SELECT event_type FROM updates").fetchall()
-    assert [r["event_type"] for r in rows] == ["new_listing"]
+    assert _event_names(conn) == ["Cheaper"]
 
 
-def test_run_site_back_in_stock_emitted_when_the_site_tracks_availability(conn):
-    cfg = _cfg(extra={"availability": {"selector": ".badge",
-                                       "text_map": {"Loppu": "out_of_stock"},
-                                       "default": "in_stock"}})
-    products_out = [{"raw_name": "Box", "price": 9.99,
-                     "currency": "EUR", "availability": "out_of_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_out):
-        run_site(cfg, conn)
-
-    products_in = [{"raw_name": "Box", "price": 9.99,
-                    "currency": "EUR", "availability": "in_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_in):
-        run_site(cfg, conn)
-
-    types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
-    assert "back_in_stock" in types
+def _sek_cfg():
+    cfg = _cfg(source_url="https://spelparken.se/shop/")
+    cfg["site_name"] = "Spelparken"
+    return cfg
 
 
 def test_run_site_price_event_threshold_is_1_for_sek(conn):
-    cfg = _cfg(source_url="https://spelparken.se/shop/")
-    cfg["site_name"] = "Spelparken"
-    # First run: 499 SEK
-    products_v1 = [{"raw_name": "Box", "price": 499.0,
-                    "currency": "SEK", "availability": "in_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_v1):
-        run_site(cfg, conn)
+    cfg = _sek_cfg()
+    _run_once(cfg, conn, [_listing(price=499.0, currency="SEK")])
+    # 499.5 SEK is less than 1 SEK off, so no price event
+    _run_once(cfg, conn, [_listing(price=499.5, currency="SEK")])
 
-    # Second run: 499.5 SEK — less than 1 SEK delta, no price event expected
-    products_v2 = [{"raw_name": "Box", "price": 499.5,
-                    "currency": "SEK", "availability": "in_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_v2):
-        run_site(cfg, conn)
-
-    types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
-    assert "price_rise" not in types
+    assert _event_types(conn) == []
 
 
 def test_run_site_price_event_threshold_fires_at_1_for_sek(conn):
-    cfg = _cfg(source_url="https://spelparken.se/shop/")
-    cfg["site_name"] = "Spelparken"
-    products_v1 = [{"raw_name": "Box", "price": 499.0,
-                    "currency": "SEK", "availability": "in_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_v1):
-        run_site(cfg, conn)
+    cfg = _sek_cfg()
+    _run_once(cfg, conn, [_listing(price=499.0, currency="SEK")])
+    # exactly 1 SEK off, which is the threshold
+    _run_once(cfg, conn, [_listing(price=500.0, currency="SEK")])
 
-    # Second run: 500 SEK — exactly 1 SEK delta, a price event is expected
-    products_v2 = [{"raw_name": "Box", "price": 500.0,
-                    "currency": "SEK", "availability": "in_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_v2):
-        run_site(cfg, conn)
-
-    types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
-    assert "price_rise" in types
+    assert _event_types(conn) == ["price_rise"]
 
 
 def test_run_site_stores_availability_and_its_text(conn):
@@ -658,22 +693,19 @@ def test_run_site_records_availability_mode_even_when_the_site_fails(conn):
     assert row["consecutive_failures"] == 1
 
 
-def test_run_site_back_in_stock_not_emitted_without_an_availability_block(conn):
-    cfg = _cfg()  # no availability block, so every sighting reads unknown
-    products_out = [{"raw_name": "Box", "price": 9.99,
-                     "currency": "EUR", "availability": "out_of_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_out):
-        run_site(cfg, conn)
+def test_run_site_untracked_site_emits_no_transition_events_at_all(conn):
+    """No availability block means every sighting reads unknown, run after run."""
+    cfg = _cfg()  # real parser, no availability block
+    page = ("<ul><li class='product'><h2>Box</h2>"
+            "<span class='price'>9,99 €</span><a href='/p'>x</a></li></ul>")
 
-    products_in = [{"raw_name": "Box", "price": 9.99,
-                    "currency": "EUR", "availability": "in_stock", "product_url": ""}]
-    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=products_in):
-        run_site(cfg, conn)
+    for _ in range(3):
+        with patch("scraper.runner.fetch", return_value=page), \
+             patch("scraper.runner.time.sleep"):
+            run_site(cfg, conn)
 
-    types = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates").fetchall()]
-    assert "back_in_stock" not in types
+    assert conn.execute("SELECT availability FROM listings").fetchone()[0] == "unknown"
+    assert _event_types(conn) == []
 
 
 # ── run_site: fetch failures surface the cause ────────────────────────────────
@@ -917,9 +949,13 @@ def test_run_site_source_urls_duplicate_raw_name_upserts_one_listing(conn):
     }, conn)
 
     assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 1
-    # One new_listing event only, despite the two sightings
-    events = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates")]
-    assert events == ["new_listing"]
+
+    # A second run with a lower price on both URLs: one price_drop, not two
+    _run_with_pages(cfg, {
+        "https://example.fi/a": [{**_named_products("Shared Box")[0], "price": 5.0}],
+        "https://example.fi/b": [{**_named_products("Shared Box")[0], "price": 5.0}],
+    }, conn)
+    assert _event_types(conn) == ["price_drop"]
 
 
 def test_run_site_source_urls_health_success_when_any_url_yields_products(conn):
@@ -952,6 +988,74 @@ def test_run_site_source_urls_fetch_failure_marks_site_failure(conn):
     assert "500" in (site["last_error"] or "")
     # the first URL's sighting still persisted
     assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 1
+
+
+def test_run_site_page_failure_still_emits_the_earlier_pages_events(conn):
+    """A 500 on page 2 must not swallow page 1's events. Page 1's listings are
+    already committed, so the next run would diff against them and never report
+    the drop. Most configs are single-URL, so this is the common shape of it."""
+    cfg = _paged_cfg(["https://example.fi/a"])
+    _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1"),
+        "https://example.fi/a?page=2": _named_products("A2"),
+    }, conn)
+    assert _event_types(conn) == []  # first run is silent
+
+    def fake_fetch(url, **kwargs):
+        if url.endswith("?page=2"):
+            raise FetchError("HTTP 500 for " + url, 500)
+        return url
+
+    def fake_scrape(html, cfg_, **kw):
+        return [{**_named_products("A1")[0], "price": 4.99}]
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page", side_effect=fake_scrape), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    rows = conn.execute("SELECT * FROM updates").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == "price_drop"
+    assert rows[0]["raw_name"] == "A1"
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 1
+
+
+def test_run_site_source_urls_failure_still_emits_the_earlier_urls_events(conn):
+    """The listings of a URL that succeeded are already committed, so their events
+    must be written too. Dropping them means the next run diffs against the
+    updated rows and the price drop is lost for good."""
+    cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
+    _run_with_pages(cfg, {
+        "https://example.fi/a": _named_products("A1"),
+        "https://example.fi/b": _named_products("B1"),
+    }, conn)
+    assert _event_types(conn) == []  # first run is silent
+
+    def fake_fetch(url, **kwargs):
+        if url.endswith("/b"):
+            raise FetchError("HTTP 500")
+        return url
+
+    def fake_scrape(html, cfg_, **kw):
+        return [{**_named_products("A1")[0], "price": 4.99}]
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page", side_effect=fake_scrape), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    rows = conn.execute("SELECT * FROM updates").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["event_type"] == "price_drop"
+    assert rows[0]["raw_name"] == "A1"
+    assert rows[0]["new_value"] == "4.99"
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 1
+    assert "500" in (site["last_error"] or "")
 
 
 def test_run_site_source_urls_undercount_warning_names_the_url(conn, caplog):

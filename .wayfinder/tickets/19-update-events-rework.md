@@ -26,7 +26,25 @@ whose second URL raises still emits the first URL's events.
 
 **Tests** (`tests/test_runner.py`, per the spec's testing decisions): first run silent but listings upserted; second run emits `new_listing`; preorder first sighting emits `new_preorder` only; `in_stock` → `preorder` emits `new_preorder`; both restock transitions emit `back_in_stock` with the old state in `old_value`; lower price → `price_drop`, higher → `price_rise`, equal → nothing; `unknown` on either side of a transition emits nothing; a preorder-URL sighting sets `from_preorder_url` on the listing.
 
-**Status: OPEN**
+**Status: DONE**
+
+`_build_update_events` no longer takes `availability_mode`: excluding `unknown` from both sides
+of a transition covers the untracked sites on its own. The transitions live in one
+`(previous, new) -> event_type` table. `product_id` was already gone from the event dict and
+`write_updates`, having landed with ticket 14.
+
+The two rules above conflict on one pair, and this ticket's own text does too: "a transition
+into `preorder` from any other state" would include `unknown` → `preorder`, while "no transition
+rule fires from or to `unknown`" excludes it. Implemented as excluded. It costs nothing on an
+untracked site (always `unknown`, so no transition is ever visible there) but it does drop a
+real signal on the four sites whose block sets `"default": "unknown"`: a listing whose badge was
+unreadable last run and says Ennakkotilaus this run produces no event. Worth revisiting once
+there is a run's worth of real availability data to judge the false-positive rate on.
+
+The mid-run failure fix is page-level, not source-URL-level: `_scrape_source_url` appends into a
+list the caller owns, so the pages that landed before a 500 survive the raise, and `run_site`
+writes their events from a `finally` before the failure propagates to the health handler. A
+source-URL-level fix would have left the common case (one URL, several pages) broken.
 
 Blocking: 20
 Blocked by: 15
