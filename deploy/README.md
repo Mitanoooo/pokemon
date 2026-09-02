@@ -40,7 +40,9 @@ Then open a new shell (or `source ~/.bashrc`) and `git push` will work.
 
 > **Shared server.** The drafter app already runs on this server (port 8501, Caddy on port 80). The pokemon app runs on port 8502 and is reachable at `http://65.21.178.63/pokemon/` via a `handle /pokemon/*` block added to the existing Caddyfile, protected by Caddy `basicauth` (username `pokemon`, password given to the project owner out of band — never store it in this repo) — drafter's root route (`reverse_proxy localhost:8501`) is untouched.
 
-**Status: deployed and live** as of 2026-08-10. The database is the four tables of the tracker refocus: `sites`, `scrape_runs`, `listings`, `updates`. Mapping, the Cardmarket catalogue, thresholds, price history and the email digest are gone.
+**Status: deployed and live.** The app went live on 2026-08-10; the tracker refocus (tickets 13-20) landed on 2026-09-02. The database is the four tables of the refocus: `sites`, `scrape_runs`, `listings`, `updates`. Mapping, the Cardmarket catalogue, thresholds, price history and the email digest are gone. The old file stays as `pokemon.db.pre-refocus-2026-09-02` (46 MB, all of it `price_readings`); the new one is 1.7 MB.
+
+Stop the app before the rebuild, and checkpoint the WAL (`PRAGMA wal_checkpoint(TRUNCATE)`) before moving the file. Streamlit holds the database open in WAL mode, so a live `pokemon.db-wal` pairs a stale write-ahead log with whatever file lands under that name next.
 
 **Moving the live database to the four-table schema:** `scripts/rebuild_db.py --source pokemon.db --target pokemon.db.new` builds a new database from the old one and prints per-table source and target counts. `init_db.py` cannot do this: it only creates missing tables and indexes, and refuses a database that predates the refocus. Run the rebuild mid-hour (cron scrapes at :00), check the counts, then swap:
 
