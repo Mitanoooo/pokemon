@@ -269,6 +269,7 @@ def _scrape_source_url(
     pages_fetched = 0
     page_counts: list[int] = []
     exhausted_pages = False
+    previous_names: Optional[set] = None
 
     for i, url in enumerate(urls):
         if sleep_first or i > 0:
@@ -298,6 +299,20 @@ def _scrape_source_url(
             logger.info("%s: empty page at %s, stopping pagination", site_name, url)
             exhausted_pages = True
             break
+
+        names = {p["raw_name"] for p in products}
+        if names == previous_names:
+            # Some shops ignore the page parameter and serve page 1 again rather
+            # than 404ing, so the only end-of-listing signal is the repeat.
+            # Without this the run spends every remaining max_pages fetch on the
+            # same products and then warns that max_pages is too low.
+            logger.info(
+                "%s: %s repeats the previous page, stopping pagination",
+                site_name, url,
+            )
+            exhausted_pages = True
+            break
+        previous_names = names
 
         page_counts.append(len(products))
 

@@ -125,8 +125,10 @@ def test_run_site_jitter_called_between_pages(conn):
         "url_pattern": "https://example.fi/shop/page/{page}/",
         "max_pages": 3,
     }
+    # A page per name: a page repeating the previous one ends the walk early.
+    pages = [_named_products("A"), _named_products("B"), _named_products("C")]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(1)), \
+         patch("scraper.runner.scrape_page", side_effect=pages), \
          patch("scraper.runner.time.sleep") as mock_sleep:
         run_site(cfg, conn)
 
@@ -745,8 +747,9 @@ def _paginated_cfg(max_pages: int) -> dict:
 
 def test_run_site_warns_when_last_configured_page_still_had_products(conn, caplog):
     cfg = _paginated_cfg(2)
+    pages = [_named_products("A", "B"), _named_products("C", "D")]
     with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
-         patch("scraper.runner.scrape_page", return_value=_products(2)), \
+         patch("scraper.runner.scrape_page", side_effect=pages), \
          patch("scraper.runner.time.sleep"):
         run_site(cfg, conn)
 
@@ -1458,3 +1461,61 @@ def test_run_site_unusable_absent_means_is_ignored_not_fatal(conn, caplog):
     assert site["consecutive_failures"] == 0
     warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
     assert any("absent_means" in m for m in warnings), warnings
+
+
+# ── run_site: a shop that serves page 1 again instead of 404ing ───────────────
+
+def test_run_site_stops_when_a_page_repeats_the_previous_one(conn):
+    """Swagykarp's preorder category ignores /page/N/. Without this the run
+    spends every remaining max_pages fetch on the same products."""
+    cfg = _paginated_cfg(6)
+    fetched = []
+
+    def fake_fetch(url, **kwargs):
+        fetched.append(url)
+        return "<html>ok</html>"
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page", return_value=_named_products("A", "B")), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    assert len(fetched) == 2  # page 1, page 2 repeats it, stop
+    assert conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 2
+
+
+def test_run_site_repeated_page_is_not_an_undercount_warning(conn, caplog):
+    """The listing ended. Warning about max_pages would send the operator after
+    a page count that cannot help."""
+    cfg = _paginated_cfg(6)
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_named_products("A", "B")), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    warnings = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+    assert not any("max_pages" in m for m in warnings), warnings
+
+
+def test_run_site_repeated_page_does_not_fail_the_site(conn):
+    cfg = _paginated_cfg(6)
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_named_products("A", "B")), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    site = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchone()
+    assert site["consecutive_failures"] == 0
+
+
+def test_run_site_a_page_of_new_names_is_not_a_repeat(conn):
+    """Only an identical name set stops the walk; a partial overlap does not."""
+    cfg = _paginated_cfg(3)
+    pages = [_named_products("A", "B"), _named_products("B", "C"), []]
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", side_effect=pages), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    names = {r[0] for r in conn.execute("SELECT raw_name FROM listings")}
+    assert names == {"A", "B", "C"}
