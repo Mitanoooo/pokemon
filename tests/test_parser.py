@@ -406,6 +406,20 @@ def test_scrape_page_from_preorder_url_marks_every_product_preorder():
     assert all(p["availability_text"] == "(preorder url)" for p in products)
 
 
+def test_scrape_page_tcgkauppa_price_ignores_the_ex_vat_suffix():
+    # The shop prints "4,90 € <small class=woocommerce-price-suffix>3,90 €</small>"
+    # — the same price without VAT. Last-token-wins used to read that one.
+    html = Path("tests/fixtures/tcgkauppa.fi/page1.html").read_text()
+    products = scrape_page(html, TCGKAUPPA_CFG)
+    assert products[0]["price"] == 4.90
+    assert products[1]["price"] == 129.90
+
+def test_scrape_page_tcgkauppa_no_ex_vat_price_survives():
+    html = Path("tests/fixtures/tcgkauppa.fi/page1.html").read_text()
+    prices = {p["price"] for p in scrape_page(html, TCGKAUPPA_CFG)}
+    assert 103.51 not in prices  # 129,90 € ex-VAT
+
+
 def test_scrape_page_tcgkauppa_currency():
     html = Path("tests/fixtures/tcgkauppa.fi/page1.html").read_text()
     products = scrape_page(html, TCGKAUPPA_CFG)

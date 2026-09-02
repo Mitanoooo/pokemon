@@ -160,6 +160,7 @@ def _extract_price(container_el: Tag, config: dict) -> Optional[float]:
     - karkkainen.com: data-ls-price attribute on .lipscore-rating-small
     - WooCommerce <ins>/<del> sale prices
     - .visually-hidden span stripping (blockhousegames.net, pelienmaa.com)
+    - .woocommerce-price-suffix stripping (tcgkauppa.fi's ex-VAT price)
     - price_fallback selector when primary returns empty
     - maxgaming.fi product name multi-line (handled in name extraction)
     """
@@ -212,6 +213,12 @@ def _extract_price(container_el: Tag, config: dict) -> Optional[float]:
     # Strip .visually-hidden spans before reading text
     for vh in el.select(".visually-hidden"):
         vh.decompose()
+
+    # WooCommerce's price suffix, which tcgkauppa.fi fills with the same price
+    # ex-VAT: "15,90 € <small>12,67 €</small>". Last-token-wins would read the
+    # ex-VAT one, storing every price 25.5 % under what the shop charges.
+    for suffix in el.select(".woocommerce-price-suffix"):
+        suffix.decompose()
 
     # Try primary selector text
     raw = el.get_text()
