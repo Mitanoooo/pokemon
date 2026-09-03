@@ -1,8 +1,12 @@
 {
   "site_name": "Karkkainen.com verkkokauppa",
-  "source_url": "https://www.karkkainen.com/verkkokauppa/kerailykortit",
+  "source_url": "https://www.karkkainen.com/verkkokauppa/kerailykortit?offset=0&facet=attributes.Tuotemerkki%3APokemon&facet=attributes.Saatavuus+myyj%C3%A4lt%C3%A4%3AK%C3%A4rkk%C3%A4inen",
   "method": "css",
   "decimal_separator": "dot",
+  "availability": {
+    "default": "in_stock",
+    "absent_means": "out_of_stock"
+  },
   "selectors": {
     "product_container": "[data-testid=\"product-card-container\"]",
     "product_name": "[data-testid=\"product-card-name-link\"] p",
@@ -10,12 +14,11 @@
     "product_url": "[data-testid=\"product-card-name-link\"]"
   },
   "pagination": {
-    "type": "offset",
-    "selector": "[data-testid=\"next-page-button\"]",
-    "url_pattern": "?offset={offset}",
-    "max_pages": 2,
-    "page_size": 60
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
   },
   "confidence": "medium",
-  "notes": "React/MUI storefront but server-side rendered (requests+BS4 works, no JS execution needed). This is the general 'Keräilykortit' (collectible cards) category, not Pokemon-specific — of 66 total products only 12 are tagged Pokemon (see 'Tuotemerkki: Pokemon (12)' filter facet); a real scraper must filter by the 'Pokemon' brand facet or filter client-side on product name. Price is NOT in the visible text (loaded async, page shows a spinner placeholder) — instead read the numeric 'data-ls-price' attribute (e.g. data-ls-price=\"6.49\") off the .lipscore-rating-small span, which also carries 'data-ls-availability' (\"InStock\"/\"OutOfStock\") for stock status and 'data-ls-product-url' for the absolute product URL. Pagination uses an offset query param (?offset=60 for page 2) rather than a page number — 60 products per page, 66 total = 2 pages; url_pattern placeholder here is the raw offset value, not a page index (page N offset = (N-1)*60). Ticket 18: availability block dropped, so the site reads as not tracked. Every listing card carries data-ls-availability=\"OutOfStock\" (all 57, including items whose product page says InStock), and the cards are otherwise identical, so the listing page has no usable state signal."
+  "notes": "React/MUI storefront but server-side rendered (requests+BS4 works, no JS execution needed). Price is NOT in the visible text (loaded async, page shows a spinner placeholder) — instead read the numeric 'data-ls-price' attribute (e.g. data-ls-price=\"6.49\") off the .lipscore-rating-small span, which also carries 'data-ls-availability' and 'data-ls-product-url'. Ticket 18: availability block dropped, so the site read as not tracked. Every listing card carries data-ls-availability=\"OutOfStock\" (all 56, including items whose product page sells them), and the cards are otherwise identical, so the page has no per-product state signal. 2026-09-03: source_url moved off the bare 'Keräilykortit' category onto the same category with two facets, 'attributes.Tuotemerkki:Pokemon' and 'attributes.Saatavuus myyjältä:Kärkkäinen'. That fixes two things at once. The bare category was the shop's general collectible-card aisle: 56 products of which only 12 were Pokemon, so 44 Lorcana, Magic, Panini and Topps products were tracked as Pokemon listings. And the availability facet means the page only lists what Kärkkäinen itself stocks, so everything on it is in stock. Handled the same way as prisma.fi: no availability form (the data-ls-availability attribute still lies), 'default: in_stock' for everything on the page, and 'absent_means: out_of_stock' so the runner reads a listing dropping off the page as it going out of stock. That is the only stock signal this shop gives, and it is what makes back_in_stock possible here. Pagination is off: the facets cut the category to 12 products, the page size is 60, and no [data-testid=next-page-button] renders. The offset pattern could not be kept anyway, because _offset() concatenates '?offset=N' onto the source URL and this URL already carries a query string."
 }

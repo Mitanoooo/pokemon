@@ -13,8 +13,9 @@ each fixture is a saved page cut down to a few product cards per state:
 - pelimies.fi: a preorder tag beats the add-to-cart button that decides the rest.
 - swagykarp.fi: preorder cards print "Pre order" in the same element sold-out
   cards print "Out of Stock" in, and only the first is mapped, on purpose.
-- prisma.fi, karkkainen.com: the earlier blocks were silently wrong. These two
-  read the full page1.html fixtures they already had.
+- prisma.fi, karkkainen.com: the earlier blocks were silently wrong. Both read a
+  full listing-page fixture (prisma page1.html, karkkainen facets.html) rather
+  than a hand-cut one.
 """
 import json
 from collections import Counter
@@ -102,12 +103,24 @@ def test_prisma_does_not_read_its_whole_page_as_in_stock():
     assert all(p["availability_text"] == "Ei saatavilla" for p in sold_out)
 
 
-def test_karkkainen_is_not_tracked():
-    """Every card reports OutOfStock, including items its own product pages call
-    InStock, so the site carries no block and reads unknown throughout."""
+def test_karkkainen_reads_its_stock_filtered_page_as_in_stock():
+    """data-ls-availability says OutOfStock on every card, including items its own
+    product pages sell, so the config carries no form. The source URL instead
+    facets on 'Saatavuus myyjältä: Kärkkäinen', so everything listed is in stock
+    and dropping off the page is the shop's only out-of-stock signal."""
     config = json.loads((CONFIG_DIR / "karkkainen.com.json").read_text(encoding="utf-8"))
-    assert availability_forms(config) is None
-    html = (FIXTURE_DIR / "karkkainen.com" / "page1.html").read_text(encoding="utf-8")
+    assert availability_forms(config) == "absent"
+    html = (FIXTURE_DIR / "karkkainen.com" / "facets.html").read_text(encoding="utf-8")
     products = scrape_page(html, config)
     assert products
-    assert all(p["availability"] == "unknown" for p in products)
+    assert all(p["availability"] == "in_stock" for p in products)
+
+
+def test_karkkainen_facets_keep_the_page_to_pokemon():
+    """The bare Keräilykortit category carried 56 products, only 12 of them
+    Pokemon; the rest were Lorcana, Magic, Panini and Topps tracked as Pokemon."""
+    config = json.loads((CONFIG_DIR / "karkkainen.com.json").read_text(encoding="utf-8"))
+    html = (FIXTURE_DIR / "karkkainen.com" / "facets.html").read_text(encoding="utf-8")
+    names = [p["raw_name"].lower() for p in scrape_page(html, config)]
+    assert names
+    assert all("pokemon" in n or "pokémon" in n for n in names)
