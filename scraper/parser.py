@@ -262,7 +262,12 @@ def _extract_url(container_el: Tag, config: dict) -> str:
         if container_el.name == "a":
             return container_el.get("href", "") or ""
         return ""
+    # select_one only walks descendants, so a config whose product_url selector
+    # names the container itself (pokepulls.fi, where the card is one big <a>)
+    # would come back empty. Match the container against the selector too.
     el = container_el.select_one(sel)
+    if el is None and container_el.css.match(sel):
+        el = container_el
     if el is None:
         return ""
     return el.get("href", "") or el.get("data-ls-product-url", "")

@@ -697,6 +697,38 @@ def test_extract_url_container_href_may_be_relative():
     assert products[0]["product_url"] == "/product/x"
 
 
+def test_extract_url_selector_may_name_the_container_itself():
+    """pokepulls.fi points product_url at its own container selector.
+
+    select_one only walks descendants, so the card's href was being dropped and
+    the Updates page had names it could not link.
+    """
+    cfg = {
+        "site_name": "PokePulls",
+        "selectors": {
+            "product_container": 'a[data-selector="list-product-view"]',
+            "product_name": '[data-selector="os-theme-product-list-name"]',
+            "product_url": 'a[data-selector="list-product-view"]',
+        },
+    }
+    html = '<div><a data-selector="list-product-view" href="https://pokepulls.fi/tuote/x">' \
+           '<span data-selector="os-theme-product-list-name">X</span></a></div>'
+    products = scrape_page(html, cfg)
+    assert products[0]["product_url"] == "https://pokepulls.fi/tuote/x"
+
+
+def test_extract_url_prefers_a_descendant_over_the_container():
+    """A selector that matches both takes the inner anchor, as it always did."""
+    cfg = {
+        "site_name": "Test",
+        "selectors": {"product_container": "a.card", "product_name": "h3",
+                      "product_url": "a"},
+    }
+    html = '<a class="card" href="/outer"><h3>Thing</h3><a href="/inner">go</a></a>'
+    products = scrape_page(html, cfg)
+    assert products[0]["product_url"] == "/inner"
+
+
 def test_scrape_page_non_anchor_container_without_selector_has_no_url():
     """No product_url selector and a non-anchor container → empty, not garbage."""
     cfg = {
