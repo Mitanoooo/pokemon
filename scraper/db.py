@@ -342,10 +342,11 @@ def get_updates(
     a second or two, so id breaks the tie and the cap keeps the same rows
     between two calls.
 
-    product_url and latest_currency come from the listing the event names, so a
-    price reads as 249 SEK rather than as an ambiguous number. The join is on the
-    listings primary key, and a listing that no longer exists leaves both NULL
-    rather than dropping the event.
+    product_url, latest_price and latest_currency come from the listing the event
+    names, so a price reads as 249 SEK rather than as an ambiguous number, and a
+    back_in_stock event (whose own values are availability states) can still show
+    what the thing costs. The join is on the listings primary key, and a listing
+    that no longer exists leaves all three NULL rather than dropping the event.
     """
     types = list(event_types)
     if not types:
@@ -367,7 +368,7 @@ def get_updates(
         f"""
         SELECT u.id, u.run_id, u.site_id, s.name AS site_name,
                u.raw_name, u.event_type, u.old_value, u.new_value,
-               u.created_at, u.seen, l.product_url, l.latest_currency
+               u.created_at, u.seen, l.product_url, l.latest_price, l.latest_currency
         FROM updates u
         LEFT JOIN sites s ON s.id = u.site_id
         LEFT JOIN listings l ON l.site_id = u.site_id AND l.raw_name = u.raw_name
@@ -389,6 +390,47 @@ def mark_all_updates_seen(conn: sqlite3.Connection) -> None:
     """Set seen=1 for every row in updates."""
     conn.execute("UPDATE updates SET seen = 1")
     conn.commit()
+
+
+# ── watch keywords ────────────────────────────────────────────────────────────
+
+def get_watch_keywords(conn: sqlite3.Connection) -> list[str]:
+    """The keywords the Updates page highlights, oldest first."""
+    rows = conn.execute(
+        "SELECT keyword FROM watch_keywords ORDER BY created_at, keyword"
+    ).fetchall()
+    return [r["keyword"] for r in rows]
+
+
+def set_watch_keywords(conn: sqlite3.Connection, keywords: Iterable[str]) -> list[str]:
+    """Replace the stored keywords with `keywords` and return what was stored.
+
+    Blank entries are dropped and case-insensitive duplicates collapse, so the
+    page can hand over whatever the operator typed. A keyword already stored
+    keeps its created_at, which is what holds the display order steady while
+    others are added and removed around it.
+    """
+    kept: list[str] = []
+    seen: set[str] = set()
+    for keyword in keywords:
+        cleaned = " ".join(str(keyword).split())
+        if not cleaned or cleaned.casefold() in seen:
+            continue
+        seen.add(cleaned.casefold())
+        kept.append(cleaned)
+
+    # Exact-string comparison, because the keyword is the primary key: a keyword
+    # retyped in another case is a delete plus an insert, not a duplicate row.
+    for keyword in get_watch_keywords(conn):
+        if keyword not in kept:
+            conn.execute("DELETE FROM watch_keywords WHERE keyword = ?", (keyword,))
+    for keyword in kept:
+        conn.execute(
+            "INSERT OR IGNORE INTO watch_keywords (keyword, created_at) VALUES (?, ?)",
+            (keyword, _now()),
+        )
+    conn.commit()
+    return get_watch_keywords(conn)
 
 
 # ── site health ───────────────────────────────────────────────────────────────

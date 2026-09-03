@@ -52,6 +52,29 @@ with f_drop:
     # news, and the write path deliberately keeps no magnitude filter.
     min_drop = st.number_input("Min drop %", min_value=0.0, value=2.0, step=0.5)
 
+# The keywords live in the database, not in session state, so they are still here
+# after a reload, an app restart or a move to another device. The box is the only
+# way to change them: editing it reruns the page, which saves what it now holds.
+stored_keywords = db.get_watch_keywords(conn)
+f_keywords, f_clear = st.columns([7, 1])
+with f_keywords:
+    typed = st.text_input(
+        "Highlight keywords",
+        value=", ".join(stored_keywords),
+        placeholder="ascended, chaos rising",
+        help="Comma-separated, so a keyword can be a phrase. Matching rows are "
+             "highlighted. Saved until you change or clear them.",
+    )
+with f_clear:
+    st.write("")
+    cleared = st.button("Clear", width="stretch", disabled=not stored_keywords)
+
+keywords = [] if cleared else ui.parse_keywords(typed)
+if keywords != stored_keywords:
+    keywords = db.set_watch_keywords(conn, keywords)
+    if cleared:
+        st.rerun()
+
 if not event_types:
     st.info("Pick at least one event type.")
     st.stop()
@@ -74,17 +97,35 @@ def _change_pct(old, new):
     return (new_price - old_price) / old_price * 100
 
 
-def _movement(row) -> str:
-    """The event's payload as one cell: a price move, a state move, or a price."""
+def _amount(value) -> str:
+    """A stored price to two decimals, so a column of them lines up.
+
+    Prices are stored as REAL and as the strings an event was written with, which
+    print as '5.9' next to '6.49'. Anything unparseable is shown as it is.
+    """
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value or "")
+
+
+def _price(row) -> str:
+    """The event's price as one cell.
+
+    A price move shows both ends, because the move is the news. Every other event
+    shows one price: what the thing costs now. new_listing and new_preorder carry
+    that price themselves; back_in_stock carries availability states instead, so
+    it falls back to the listing's own latest price.
+    """
     currency = row["latest_currency"] or ""
     if row["event_type"] in PRICE_EVENTS:
-        return f"{row['old_value']} → {row['new_value']} {currency}".strip()
-    if row["event_type"] == "back_in_stock":
-        return (f"{ui.availability_label(row['old_value'])} → "
-                f"{ui.availability_label(row['new_value'])}")
-    if row["new_value"]:
-        return f"{row['new_value']} {currency}".strip()
-    return ""
+        return f"{_amount(row['old_value'])} → {_amount(row['new_value'])} {currency}".strip()
+    price = row["new_value"] if row["event_type"] != "back_in_stock" else None
+    if price is None:
+        price = row["latest_price"]
+    if price is None:
+        return ""
+    return f"{_amount(price)} {currency}".strip()
 
 
 records = []
@@ -97,11 +138,14 @@ for row in rows:
         continue
     records.append({
         "Event": ui.EVENT_LABELS.get(row["event_type"], row["event_type"]),
-        "Name": row["raw_name"],
+        # The name is the link, so the cell holds the URL and a Styler formats it
+        # back to the name. A listing with no URL falls back to the name itself:
+        # LinkColumn still paints it link-blue but renders no anchor, so it reads
+        # as a name that cannot be opened, which is the truth about it.
+        "Name": row["product_url"] or row["raw_name"],
+        "_name": row["raw_name"],
         "Site": row["site_name"] or "",
-        "Old → new": _movement(row),
-        "Change %": change,
-        "Link": row["product_url"] or "",
+        "Price": _price(row),
         "When": ui.when(row["created_at"]),
     })
 
@@ -109,7 +153,11 @@ if not records:
     st.info(f"No events in the last {window.lower()} matching these filters.")
     st.stop()
 
-st.caption(f"{len(records)} events")
+matched = sum(1 for r in records if ui.matches_keywords(r["_name"], keywords))
+caption = f"{len(records)} events"
+if keywords:
+    caption += f", {matched} matching {', '.join(keywords)}"
+st.caption(caption)
 if capped:
     # The cap is applied before the minimum-drop filter, so the table can show
     # fewer than ROW_CAP rows and still be cut off.
@@ -118,12 +166,27 @@ if capped:
         "those newest events only. Narrow the window, the site or the event types."
     )
 
+frame = pd.DataFrame(records)
+names = dict(zip(frame["Name"], frame["_name"]))
+highlight = frame["_name"].map(lambda n: ui.matches_keywords(n, keywords))
+frame = frame.drop(columns=["_name"])
+
+styled = (
+    frame.style
+    # Column config has no per-row display text, and the docs point at Styler
+    # for exactly this: the cell keeps the URL, the table shows the name.
+    .format({"Name": lambda url: names.get(url, url)})
+    .apply(lambda col: [ui.HIGHLIGHT_STYLE if hit else "" for hit in highlight], axis=0)
+)
+
 st.dataframe(
-    pd.DataFrame(records),
+    styled,
     hide_index=True,
     width="stretch",
     column_config={
-        "Change %": st.column_config.NumberColumn(format="%.1f%%", width="small"),
-        "Link": ui.link_column(),
+        "Event": st.column_config.TextColumn(width="small"),
+        "Name": st.column_config.LinkColumn("Name", width="large"),
+        "Price": st.column_config.TextColumn(width="small"),
+        "When": st.column_config.TextColumn("When (Helsinki)", width="small"),
     },
 )

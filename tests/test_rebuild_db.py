@@ -278,7 +278,8 @@ def test_main_creates_the_target_from_the_new_schema(tmp_path, source, capsys):
     assert exit_code == 0
     out = sqlite3.connect(target_path)
     tables = {r[0] for r in out.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert tables == {"sites", "scrape_runs", "listings", "updates", "sqlite_sequence"}
+    assert tables == {"sites", "scrape_runs", "listings", "updates", "watch_keywords",
+                      "sqlite_sequence"}
     assert out.execute("SELECT COUNT(*) FROM listings").fetchone()[0] == 3
     assert "listings" in capsys.readouterr().out
 

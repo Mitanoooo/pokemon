@@ -466,6 +466,17 @@ def test_get_updates_carries_the_currency(conn, site_id):
     assert results[0]["latest_currency"] == "SEK"
 
 
+def test_get_updates_carries_the_listing_price(conn, site_id):
+    """back_in_stock stores availability states, so the price has to come from the
+    listing or the Updates page has nothing to show in its price column."""
+    db.upsert_listing(conn, site_id, "Box", "", 39.9, "EUR", "in_stock")
+    _insert_update(conn, site_id, "Box", "back_in_stock",
+                   old_value="out_of_stock", new_value="in_stock")
+
+    results = db.get_updates(conn, ["back_in_stock"], "2019-01-01 00:00:00")
+    assert results[0]["latest_price"] == 39.9
+
+
 def test_get_updates_keeps_a_row_whose_listing_is_gone(conn, site_id):
     """An event outlives nothing here, but the join must not drop it either."""
     _insert_update(conn, site_id, "Vanished")
@@ -691,3 +702,45 @@ def test_mark_all_updates_seen_sets_seen_for_all(conn, site_id):
 
     rows = conn.execute("SELECT seen FROM updates").fetchall()
     assert all(r["seen"] == 1 for r in rows)
+
+
+# ── watch keywords ────────────────────────────────────────────────────────────
+
+def test_watch_keywords_start_empty(conn):
+    assert db.get_watch_keywords(conn) == []
+
+
+def test_set_watch_keywords_round_trips(conn):
+    assert db.set_watch_keywords(conn, ["ascended", "chaos rising"]) == [
+        "ascended", "chaos rising"
+    ]
+    assert db.get_watch_keywords(conn) == ["ascended", "chaos rising"]
+
+
+def test_set_watch_keywords_replaces_the_whole_set(conn):
+    """The page hands over what its box holds, so a dropped keyword must go."""
+    db.set_watch_keywords(conn, ["ascended", "chaos rising"])
+    assert db.set_watch_keywords(conn, ["chaos rising"]) == ["chaos rising"]
+
+
+def test_set_watch_keywords_drops_blanks_and_duplicates(conn):
+    stored = db.set_watch_keywords(conn, [" ascended ", "", "  ", "ASCENDED", "prismatic"])
+    assert stored == ["ascended", "prismatic"]
+
+
+def test_set_watch_keywords_collapses_inner_whitespace(conn):
+    assert db.set_watch_keywords(conn, ["chaos   rising"]) == ["chaos rising"]
+
+
+def test_set_watch_keywords_can_clear(conn):
+    db.set_watch_keywords(conn, ["ascended"])
+    assert db.set_watch_keywords(conn, []) == []
+
+
+def test_set_watch_keywords_keeps_the_order_keywords_were_added_in(conn):
+    """Re-saving must not shuffle the box: a keyword already stored keeps its place."""
+    db.set_watch_keywords(conn, ["ascended"])
+    db.set_watch_keywords(conn, ["ascended", "chaos rising"])
+    assert db.set_watch_keywords(conn, ["ascended", "chaos rising", "prismatic"]) == [
+        "ascended", "chaos rising", "prismatic"
+    ]

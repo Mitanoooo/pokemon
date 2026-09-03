@@ -54,6 +54,15 @@ CREATE TABLE IF NOT EXISTS updates (
     seen       INTEGER NOT NULL DEFAULT 0
 );
 
+-- Keywords the operator is following right now, e.g. 'ascended'. The Updates
+-- page highlights matching rows. They live here rather than in session state so
+-- they survive a browser reload, an app restart and a different device: a set
+-- someone typed once is meant to stay until they clear it.
+CREATE TABLE IF NOT EXISTS watch_keywords (
+    keyword    TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_listings_raw_name ON listings(raw_name);
 CREATE INDEX IF NOT EXISTS idx_listings_site_availability ON listings(site_id, availability);
 CREATE INDEX IF NOT EXISTS idx_updates_created_at ON updates(created_at DESC);
