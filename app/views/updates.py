@@ -1,8 +1,8 @@
+import html
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -67,7 +67,12 @@ with f_keywords:
     )
 with f_clear:
     st.write("")
-    cleared = st.button("Clear", width="stretch", disabled=not stored_keywords)
+    # Enabled on what the box holds now, not on what was stored: the run that
+    # first saves a keyword has an empty stored list, and a greyed-out Clear next
+    # to a filled box reads as broken.
+    cleared = st.button(
+        "Clear", width="stretch", disabled=not ui.parse_keywords(typed)
+    )
 
 keywords = [] if cleared else ui.parse_keywords(typed)
 if keywords != stored_keywords:
@@ -137,23 +142,24 @@ for row in rows:
     if row["event_type"] == "price_drop" and change is not None and abs(change) < min_drop:
         continue
     records.append({
-        "Event": ui.EVENT_LABELS.get(row["event_type"], row["event_type"]),
-        # The name is the link, so the cell holds the URL and a Styler formats it
-        # back to the name. A listing with no URL falls back to the name itself:
-        # LinkColumn still paints it link-blue but renders no anchor, so it reads
-        # as a name that cannot be opened, which is the truth about it.
-        "Name": row["product_url"] or row["raw_name"],
-        "_name": row["raw_name"],
-        "Site": row["site_name"] or "",
-        "Price": _price(row),
-        "When": ui.when(row["created_at"]),
+        "name": row["raw_name"],
+        # The name is the link to the shop's own product page. A listing with no
+        # URL keeps its name as plain text instead of a link that goes nowhere.
+        "cells": [
+            html.escape(ui.EVENT_LABELS.get(row["event_type"], row["event_type"])),
+            ui.link(row["product_url"], row["raw_name"]),
+            html.escape(row["site_name"] or ""),
+            html.escape(_price(row)),
+            html.escape(ui.when(row["created_at"])),
+        ],
     })
 
 if not records:
     st.info(f"No events in the last {window.lower()} matching these filters.")
     st.stop()
 
-matched = sum(1 for r in records if ui.matches_keywords(r["_name"], keywords))
+highlight = [ui.matches_keywords(r["name"], keywords) for r in records]
+matched = sum(highlight)
 caption = f"{len(records)} events"
 if keywords:
     caption += f", {matched} matching {', '.join(keywords)}"
@@ -166,27 +172,15 @@ if capped:
         "those newest events only. Narrow the window, the site or the event types."
     )
 
-frame = pd.DataFrame(records)
-names = dict(zip(frame["Name"], frame["_name"]))
-highlight = frame["_name"].map(lambda n: ui.matches_keywords(n, keywords))
-frame = frame.drop(columns=["_name"])
-
-styled = (
-    frame.style
-    # Column config has no per-row display text, and the docs point at Styler
-    # for exactly this: the cell keeps the URL, the table shows the name.
-    .format({"Name": lambda url: names.get(url, url)})
-    .apply(lambda col: [ui.HIGHLIGHT_STYLE if hit else "" for hit in highlight], axis=0)
-)
-
-st.dataframe(
-    styled,
-    hide_index=True,
-    width="stretch",
-    column_config={
-        "Event": st.column_config.TextColumn(width="small"),
-        "Name": st.column_config.LinkColumn("Name", width="large"),
-        "Price": st.column_config.TextColumn(width="small"),
-        "When": st.column_config.TextColumn("When (Helsinki)", width="small"),
-    },
+# An HTML table rather than st.dataframe, because only real anchors can carry the
+# product name as the link text. The rows are newest first out of the query, which
+# is the order this page is read in, so nothing is lost by not being sortable.
+st.markdown(
+    ui.html_table(
+        ["Event", "Name", "Site", "Price", "When (Helsinki)"],
+        [r["cells"] for r in records],
+        highlight=highlight,
+        nowrap=(0, 3, 4),
+    ),
+    unsafe_allow_html=True,
 )
