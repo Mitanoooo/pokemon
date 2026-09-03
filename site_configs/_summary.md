@@ -1,6 +1,6 @@
-# Site config summary — all 40 sites (batches 1–8)
+# Site config summary — all 41 sites (batches 1–8, plus k-ruoka.fi)
 
-Confidence counts: **21 high**, **16 medium**, **3 low**.
+Confidence counts: **21 high**, **16 medium**, **4 low**.
 
 ## Config fields the scraper reads
 
@@ -45,11 +45,14 @@ python -m scraper.probe --all      # one coverage line per site
 
 ## Availability coverage after ticket 18
 
-Of the 29 enabled configs, 27 carry an `availability` block checked against live
-HTML, 1 (`kevinshobbyshop.com`) carries an unchecked one because the shop answers
-HTTP 403 to every request from here, and 1 (`karkkainen.com`) deliberately has no
-block: its listing cards all report `OutOfStock` in Lipscore markup, including
-items its own product pages call in stock, so the site reads as not tracked.
+Of the 29 enabled configs, 28 carry an `availability` block checked against live
+HTML and 1 (`kevinshobbyshop.com`) carries an unchecked one because the shop
+answers HTTP 403 to every request from here. `karkkainen.com` used to have no
+block at all: its listing cards all report `OutOfStock` in Lipscore markup,
+including items its own product pages call in stock. Since 2026-09-03 its
+`source_url` is the facet-filtered brand page, which lists only what Kärkkäinen
+itself stocks, so it reads `in_stock` by default with `absent_means` for the rest,
+the same way prisma.fi does.
 `probe --all` puts every configured site at 0% unknown.
 
 Six sites are **tracked in-stock-only** — their listing pages never show a
@@ -101,8 +104,9 @@ out: `blockhousegames.net`, `ellimadelli.fi`, `godofcards.com`, `muksumassi.fi`,
 - swagykarp.fi — Swagykarp
 - verkkokauppa.com — Verkkokauppa.com
 
-## Low confidence (3)
+## Low confidence (4)
 
+- **k-ruoka.fi** — Cloudflare WAF answers 403 ("Pyyntö estetty (CF/WB)") to every path but /robots.txt, from this machine and from the server, and headless Chromium gets the same, so no HTML was ever read and the selectors are empty. The intended handling is recorded: the brand page lists only in-stock products, so `default: in_stock` plus `absent_means: out_of_stock`. Needs a browser fetch from an unblocked IP, and a pinned store, since K-Ruoka scopes prices per store.
 - **pelienmaa.com** — Blocked by this machine's corporate network security proxy (categorized "games" and refused before any Shopify content was served); no selectors could be inferred, needs revisiting from an unfiltered network.
 - **pokemoncenter.com** — Blocked by Imperva/Incapsula bot-protection with an hCaptcha "I am human" challenge on every request (plain fetch and real browser both hit it); no product HTML was ever reached, and solving the CAPTCHA was intentionally not attempted (would bypass an anti-bot control) — likely needs an official API or a dedicated anti-bot-aware scraping approach instead.
 - **puolenkuunpelit.com** — Blocked before any page content loaded by the same corporate network security policy interstitial ("games" category); no product HTML served, needs revisiting from an unfiltered network.

@@ -1,0 +1,25 @@
+{
+  "site_name": "K-Ruoka verkkokauppa",
+  "source_url": "https://www.k-ruoka.fi/kauppa/tuotemerkit/pokemon-9909",
+  "method": "css",
+  "availability": {
+    "default": "in_stock",
+    "absent_means": "out_of_stock"
+  },
+  "selectors": {
+    "product_container": null,
+    "product_name": null,
+    "price": null,
+    "product_url": null
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "disabled": true,
+  "disabled_reason": "Cloudflare WAF returns HTTP 403 ('Pyyntö estetty (CF/WB)') to every path but /robots.txt, from this dev machine and from the production server alike, and headless Chromium is blocked the same way, so no page HTML can be read and the selectors cannot be written.",
+  "confidence": "low",
+  "notes": "2026-09-03: added on request as a stock-filtered brand page in the prisma.fi / karkkainen.com mould — the operator confirms /kauppa/tuotemerkit/pokemon-9909 lists only products in stock, so the availability block is 'default: in_stock' plus 'absent_means: out_of_stock' and a listing dropping off the page is the out-of-stock signal. Nothing else could be filled in, because the site cannot be fetched: www.k-ruoka.fi/robots.txt answers 200, and every other path (/, /kauppa, /reseptit, /sitemap-https.xml, /kr-api/*) answers 403 with Cloudflare's custom block page 'Pyyntö estetty (CF/WB)' rather than a solvable JS challenge. Full Chrome header sets, a requests Session and headless Chromium via Playwright all get the same 403, from this machine and from the Hetzner server, so the rule keys on datacenter IP reputation rather than on the client. robots.txt itself does not forbid the page (only query-string patterns and /k-citymarket/tarjouslehti). Fetched through a residential path the URL does load (title 'Pokemon | Tuotemerkit | K-Ruoka Verkkokauppa'), but the markdown carried nothing except that title, so the listing is very likely client-rendered as well and a plain requests fetch would return an empty shell even from an unblocked IP. To make this site work: a browser fetch (fetch_method 'playwright', which scraper/fetcher.py still raises NotImplementedError for) running from an IP K-Ruoka does not block, or their JSON API if a token can be obtained. K-Ruoka is also store-scoped: prices and selection depend on the chosen store, so whatever fetch lands here has to pin one store or the numbers will drift between runs. Same blocker family as poromagia.com, proshop.fi and kevinshobbyshop.com, but stricter: those serve this dev machine and only block the server."
+}
