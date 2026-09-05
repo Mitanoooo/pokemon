@@ -2,20 +2,26 @@
   "site_name": "Konsolinet",
   "source_url": "https://www.konsolinet.fi/category/207/pokemon-kortit",
   "method": "css",
+  "fetch_method": "playwright",
+  "playwright_wait_for": "article.ListProduct",
   "selectors": {
     "product_container": "article.ListProduct",
     "product_name": "h3.ListProductName a",
     "price": "dd.Price",
     "product_url": "h3.ListProductName a"
   },
+  "availability": {
+    "container_class_map": {
+      "AvailabilityInStock": "in_stock",
+      "AvailabilityOutOfStock": "out_of_stock"
+    }
+  },
   "pagination": {
     "type": "none",
-    "selector": null,
     "url_pattern": null,
     "max_pages": 1
   },
-  "disabled": true,
-  "disabled_reason": "Returns JS bot-check stub (Client Challenge) on plain fetch. Requires Playwright/headless browser to render product list.",
+  "disabled": false,
   "confidence": "high",
-  "notes": "Custom Finnish webshop platform. IMPORTANT: a plain requests/curl fetch of this URL returns only a ~3KB 'Client Challenge' JS bot-check stub, not the real markup — the page requires a JS-capable fetch (Playwright/headless browser) to render the actual product list. Confirmed 19 products, 'Näytetään tuotteet 1-19 / 19', all on one page (no pagination). Stock signal is a class on the product_container article itself (e.g. 'AvailabilityInStock'/'AvailabilityOutOfStock'), not a descendant — check the container's own class list, same pattern as tcgkauppa.fi. Caution: a per-product badge span.ProductOutOfStockBadge with text like 'Poistunut myynnistä toistaiseksi' can still appear on a container marked AvailabilityInStock (likely refers to a specific variant/restock, not overall availability) — trust the container's Availability* class over that badge text. Price format clean, e.g. '6,99 €'."
+  "notes": "Playwright required — plain fetch returns a JS bot-check stub. Custom Finnish webshop platform. ~19 products, all on one page. Availability: AvailabilityInStock/AvailabilityOutOfStock class on the article container itself. Ignore span.ProductOutOfStockBadge — trust the container class."
 }

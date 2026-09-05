@@ -2,6 +2,8 @@
   "site_name": "Verkkokauppa.com",
   "source_url": "https://www.verkkokauppa.com/fi/brand/pokemon",
   "method": "css",
+  "fetch_method": "playwright",
+  "playwright_wait_for": "article[data-product-id]:not([data-product-id='0'])",
   "selectors": {
     "product_container": "article[data-product-id]",
     "product_name": "h3",
@@ -10,12 +12,10 @@
   },
   "pagination": {
     "type": "none",
-    "selector": null,
     "url_pattern": null,
     "max_pages": 1
   },
-  "disabled": true,
-  "disabled_reason": "Hashed styled-components class names will change across deploys. No in-stock signal on listing tiles. Selectors need a stability review.",
+  "disabled": false,
   "confidence": "medium",
-  "notes": "Verified via DOM inspection: 48 product tiles render as article[data-product-id='<id>'] elements, each with an h3 title, a price using stable-looking class .stm-price__root (shared design-system token), and a product link matching a[href*='/product/']. No pagination UI, 'load more' button, or product-count text was found - all 48 products appear to load on a single page (possibly limited to a fixed page size server-side rather than true 'all products', so max_pages/url_pattern left as none/null - worth re-checking if the real catalog under this brand has more than 48 SKUs). No explicit in-stock/out-of-stock text or badge was found on any of the 48 tiles inspected, so in_stock is left null; most CSS class names on this site are hashed styled-components tokens (e.g. 'sc-1twc5z9-1 iIZx') that will likely change between deploys - only data-product-id and the h3/a[href] structure should be considered durable."
+  "notes": "Playwright required — product tiles are JS-rendered. Container: article[data-product-id] (id='0' are placeholders, wait for non-zero). Price class .stm-price__root is a stable design-system token. No in-stock signal on listing tiles. ~48 products on one page."
 }

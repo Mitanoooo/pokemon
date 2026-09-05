@@ -14,6 +14,10 @@ _HEADERS = {
 # urllib3's DNS/SSL messages run to 300+ chars; keep last_error readable.
 _MAX_CAUSE_CHARS = 160
 
+# Lazily initialised on first playwright fetch; lives for the process lifetime.
+_pw_instance = None
+_pw_browser = None
+
 
 class FetchError(Exception):
     """A page could not be fetched.
@@ -35,7 +39,7 @@ class FetchError(Exception):
 def fetch(url: str, config: Optional[dict] = None) -> str:
     """Fetch a page as text, or raise FetchError describing why it failed."""
     if config and config.get("fetch_method") == "playwright":
-        raise NotImplementedError("playwright fetch is not yet implemented")
+        return _playwright_fetch(url, config)
 
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=35)
@@ -46,6 +50,37 @@ def fetch(url: str, config: Optional[dict] = None) -> str:
         raise FetchError(f"HTTP {resp.status_code} for {url}", resp.status_code)
 
     return resp.text
+
+
+def _ensure_browser():
+    global _pw_instance, _pw_browser
+    if _pw_browser is None:
+        from playwright.sync_api import sync_playwright
+        _pw_instance = sync_playwright().__enter__()
+        _pw_browser = _pw_instance.chromium.launch(headless=True)
+    return _pw_browser
+
+
+def _playwright_fetch(url: str, config: dict) -> str:
+    """Fetch a JS-rendered page via Playwright Chromium."""
+    browser = _ensure_browser()
+    wait_for = config.get("playwright_wait_for")
+    page = browser.new_page(extra_http_headers=_HEADERS)
+    try:
+        response = page.goto(url, timeout=60_000, wait_until="domcontentloaded")
+        if response and response.status >= 400:
+            raise FetchError(f"HTTP {response.status} for {url}", response.status)
+        if wait_for:
+            page.wait_for_selector(wait_for, timeout=20_000)
+        else:
+            page.wait_for_load_state("networkidle", timeout=20_000)
+        return page.content()
+    except FetchError:
+        raise
+    except Exception as exc:
+        raise FetchError(f"{type(exc).__name__}: {_trim(str(exc))} for {url}") from exc
+    finally:
+        page.close()
 
 
 def _trim(cause: str) -> str:

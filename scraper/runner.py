@@ -278,13 +278,13 @@ def _scrape_source_url(
         # fetch raises FetchError naming the status code or exception type;
         # run_site's except block records that message as last_error.
         if i == 0:
-            html = fetch(url)
+            html = fetch(url, config)
         else:
             # Past page 1, a 404 is how WooCommerce and friends say "no such
             # page" — the listing simply ended before max_pages. Anything else
             # (403, 500, a timeout) is a real failure and propagates.
             try:
-                html = fetch(url)
+                html = fetch(url, config)
             except FetchError as exc:
                 if exc.status_code != 404:
                     raise
