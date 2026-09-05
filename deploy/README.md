@@ -182,7 +182,7 @@ ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 'crontab -u pokemon -' < deploy/
 Contents (all times UTC):
 
 ```
-0 2-17 * * *  cd /opt/pokemon && venv/bin/python -m scraper >> logs/scraper.log 2>&1
+*/20 2-17 * * *  cd /opt/pokemon && venv/bin/python -m scraper >> logs/scraper.log 2>&1
 ```
 
 ---
