@@ -465,4 +465,4 @@ def run_all_sites(
         db.prune_updates(conn)
         db.finish_run(conn, run_id)
         if discord_webhook_url:
-            _discord.notify_keyword_matches(conn, run_id, discord_webhook_url)
+            _discord.notify_matches(conn, run_id, discord_webhook_url)

@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS watch_keywords (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Sites the operator wants alerted on regardless of keyword matching.
+CREATE TABLE IF NOT EXISTS watch_sites (
+    site_id    INTEGER PRIMARY KEY REFERENCES sites(id),
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_listings_raw_name ON listings(raw_name);
 CREATE INDEX IF NOT EXISTS idx_listings_site_availability ON listings(site_id, availability);
 CREATE INDEX IF NOT EXISTS idx_updates_created_at ON updates(created_at DESC);

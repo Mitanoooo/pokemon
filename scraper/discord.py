@@ -16,9 +16,13 @@ _EVENT_LABELS = {
 _PRICE_EVENTS = {"price_drop", "price_rise"}
 
 
-def _matches(name: str, keywords: list[str]) -> bool:
+def _keyword_hit(name: str, keywords: list[str]) -> str:
+    """Return the first matching keyword, or empty string if none."""
     h = (name or "").casefold()
-    return any(k.casefold() in h for k in keywords if k.strip())
+    for k in keywords:
+        if k.strip() and k.casefold() in h:
+            return k
+    return ""
 
 
 def _fmt_price(row: dict) -> str:
@@ -39,7 +43,7 @@ def _fmt_price(row: dict) -> str:
         return ""
 
 
-def notify_keyword_matches(
+def notify_matches(
     conn: sqlite3.Connection, run_id: int, webhook_url: str
 ) -> None:
     keywords = [
@@ -48,13 +52,18 @@ def notify_keyword_matches(
             "SELECT keyword FROM watch_keywords ORDER BY created_at, keyword"
         ).fetchall()
     ]
-    if not keywords:
+    watch_site_ids = set(
+        r["site_id"]
+        for r in conn.execute("SELECT site_id FROM watch_sites").fetchall()
+    )
+
+    if not keywords and not watch_site_ids:
         return
 
     rows = conn.execute(
         """
         SELECT u.raw_name, u.event_type, u.old_value, u.new_value,
-               s.name AS site_name, l.product_url,
+               u.site_id, s.name AS site_name, l.product_url,
                l.latest_price, l.latest_currency
         FROM updates u
         LEFT JOIN sites s ON s.id = u.site_id
@@ -65,12 +74,13 @@ def notify_keyword_matches(
         (run_id,),
     ).fetchall()
 
-    matches = [dict(r) for r in rows if _matches(r["raw_name"], keywords)]
-    if not matches:
-        return
-
     lines = []
-    for r in matches:
+    for r in [dict(r) for r in rows]:
+        kw = _keyword_hit(r["raw_name"], keywords)
+        site_watched = r["site_id"] in watch_site_ids
+        if not kw and not site_watched:
+            continue
+
         label = _EVENT_LABELS.get(r["event_type"], r["event_type"])
         name = r["raw_name"] or "?"
         url = r.get("product_url")
@@ -78,20 +88,27 @@ def notify_keyword_matches(
         site = r.get("site_name") or ""
         price = _fmt_price(r)
         price_part = f" — {price}" if price else ""
-        lines.append(f"**{label}** {name_part} @ {site}{price_part}")
 
-    keyword_list = ", ".join(keywords)
-    noun = "match" if len(matches) == 1 else "matches"
-    content = (
-        f"**{len(matches)} keyword {noun}** ({keyword_list}):\n"
-        + "\n".join(lines)
-    )
+        if kw and site_watched:
+            tag = f"`{kw} · site watch`"
+        elif kw:
+            tag = f"`{kw}`"
+        else:
+            tag = "`site watch`"
+
+        lines.append(f"**{label}** {name_part} @ {site}{price_part} {tag}")
+
+    if not lines:
+        return
+
+    noun = "alert" if len(lines) == 1 else "alerts"
+    content = f"**{len(lines)} {noun}:**\n" + "\n".join(lines)
     if len(content) > 2000:
         content = content[:1990] + "\n…"
 
     try:
         resp = requests.post(webhook_url, json={"content": content}, timeout=10)
         resp.raise_for_status()
-        logger.info("Discord: sent %d keyword %s", len(matches), noun)
+        logger.info("Discord: sent %d %s", len(lines), noun)
     except Exception as exc:
         logger.warning("Discord notification failed: %s", exc)

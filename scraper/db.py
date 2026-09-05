@@ -433,6 +433,29 @@ def set_watch_keywords(conn: sqlite3.Connection, keywords: Iterable[str]) -> lis
     return get_watch_keywords(conn)
 
 
+# ── watch sites ───────────────────────────────────────────────────────────────
+
+def get_watch_site_ids(conn: sqlite3.Connection) -> list[int]:
+    rows = conn.execute(
+        "SELECT site_id FROM watch_sites ORDER BY created_at, site_id"
+    ).fetchall()
+    return [r["site_id"] for r in rows]
+
+
+def set_watch_site_ids(conn: sqlite3.Connection, site_ids) -> list[int]:
+    new_set = set(int(i) for i in site_ids)
+    existing = set(get_watch_site_ids(conn))
+    for sid in existing - new_set:
+        conn.execute("DELETE FROM watch_sites WHERE site_id = ?", (sid,))
+    for sid in new_set - existing:
+        conn.execute(
+            "INSERT OR IGNORE INTO watch_sites (site_id, created_at) VALUES (?, ?)",
+            (sid, _now()),
+        )
+    conn.commit()
+    return get_watch_site_ids(conn)
+
+
 # ── site health ───────────────────────────────────────────────────────────────
 
 def get_site_health(conn: sqlite3.Connection) -> list[dict]:

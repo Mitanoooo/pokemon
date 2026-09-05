@@ -52,33 +52,46 @@ with f_drop:
     # news, and the write path deliberately keeps no magnitude filter.
     min_drop = st.number_input("Min drop %", min_value=0.0, value=2.0, step=0.5)
 
-# The keywords live in the database, not in session state, so they are still here
-# after a reload, an app restart or a move to another device. The box is the only
-# way to change them: editing it reruns the page, which saves what it now holds.
+# Keywords and sites live in the database so they survive reloads and restarts.
 stored_keywords = db.get_watch_keywords(conn)
-f_keywords, f_clear = st.columns([7, 1])
-with f_keywords:
-    typed = st.text_input(
-        "Highlight keywords",
-        value=", ".join(stored_keywords),
-        placeholder="ascended, chaos rising",
-        help="Comma-separated, so a keyword can be a phrase. Matching rows are "
-             "highlighted. Saved until you change or clear them.",
-    )
-with f_clear:
-    st.write("")
-    # Enabled on what the box holds now, not on what was stored: the run that
-    # first saves a keyword has an empty stored list, and a greyed-out Clear next
-    # to a filled box reads as broken.
-    cleared = st.button(
-        "Clear", width="stretch", disabled=not ui.parse_keywords(typed)
-    )
+watch_site_ids = db.get_watch_site_ids(conn)
 
-keywords = [] if cleared else ui.parse_keywords(typed)
-if keywords != stored_keywords:
-    keywords = db.set_watch_keywords(conn, keywords)
-    if cleared:
-        st.rerun()
+kw_col, add_col, btn_col = st.columns([5, 3, 1])
+with kw_col:
+    remaining_keywords = st.multiselect(
+        "Alert keywords",
+        options=stored_keywords,
+        default=stored_keywords,
+        help="Matching product names trigger a Discord alert and are highlighted below.",
+    )
+with add_col:
+    new_kw_text = st.text_input(
+        "add_kw",
+        placeholder="Type keyword(s) to add, comma-separated",
+        label_visibility="collapsed",
+    )
+with btn_col:
+    st.write("")
+    add_kw = st.button("Add", width="stretch", disabled=not new_kw_text.strip())
+
+watched_site_ids = st.multiselect(
+    "Alert on sites",
+    options=list(site_names.keys()),
+    default=watch_site_ids,
+    format_func=lambda i: site_names[i],
+    help="Any update from these sites triggers a Discord alert, regardless of keyword.",
+)
+
+new_kws = remaining_keywords + (ui.parse_keywords(new_kw_text) if add_kw else [])
+if new_kws != stored_keywords:
+    keywords = db.set_watch_keywords(conn, new_kws)
+    st.rerun()
+else:
+    keywords = stored_keywords
+
+if set(watched_site_ids) != set(watch_site_ids):
+    db.set_watch_site_ids(conn, watched_site_ids)
+    st.rerun()
 
 if not event_types:
     st.info("Pick at least one event type.")
