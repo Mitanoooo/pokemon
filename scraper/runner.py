@@ -8,7 +8,7 @@ from urllib.parse import urljoin, urlparse
 
 import sqlite3
 
-from scraper import db
+from scraper import db, discord as _discord
 from scraper.fetcher import FetchError, fetch
 from scraper.paginator import (
     is_paginated,
@@ -435,6 +435,7 @@ def run_site(
 def run_all_sites(
     db_path: str,
     configs_dir: str = "site_configs",
+    discord_webhook_url: str = "",
 ) -> None:
     conn = db.get_connection(db_path)
     pattern = f"{configs_dir}/*.json"
@@ -463,3 +464,5 @@ def run_all_sites(
     finally:
         db.prune_updates(conn)
         db.finish_run(conn, run_id)
+        if discord_webhook_url:
+            _discord.notify_keyword_matches(conn, run_id, discord_webhook_url)
