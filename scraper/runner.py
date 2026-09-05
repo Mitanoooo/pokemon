@@ -460,6 +460,14 @@ def run_all_sites(
                 logger.debug("Skipping disabled site: %s", config.get("site_name", path))
                 continue
 
+            every_n = config.get("scrape_every_n_runs")
+            if every_n and run_id % every_n != 0:
+                logger.debug(
+                    "Skipping %s this run (scrape_every_n_runs=%d, run_id=%d)",
+                    config.get("site_name", path), every_n, run_id,
+                )
+                continue
+
             run_site(config, conn, run_id=run_id)
     finally:
         db.prune_updates(conn)
