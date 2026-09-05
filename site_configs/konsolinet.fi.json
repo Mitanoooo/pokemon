@@ -11,9 +11,11 @@
     "product_url": "h3.ListProductName a"
   },
   "availability": {
-    "container_class_map": {
-      "AvailabilityInStock": "in_stock",
-      "AvailabilityOutOfStock": "out_of_stock"
+    "selector": "dd.StorageInfo",
+    "text_map": {
+      "Saatavilla / Myymälässä": "in_stock",
+      "Loppu myymälästä": "out_of_stock",
+      "Ennakkotilaa!": "preorder"
     }
   },
   "pagination": {
@@ -23,5 +25,5 @@
   },
   "disabled": false,
   "confidence": "high",
-  "notes": "Playwright required — plain fetch returns a JS bot-check stub. Custom Finnish webshop platform. ~19 products, all on one page. Availability: AvailabilityInStock/AvailabilityOutOfStock class on the article container itself. Ignore span.ProductOutOfStockBadge — trust the container class."
+  "notes": "Playwright required — plain fetch returns a JS bot-check stub. ~25 products, all on one page. Availability text in dd.StorageInfo: 'Saatavilla / Myymälässä' (in stock), 'Loppu myymälästä' (out of stock), 'Ennakkotilaa! Saatavilla DD.M.YYYY' (preorder, date varies — matched by prefix)."
 }

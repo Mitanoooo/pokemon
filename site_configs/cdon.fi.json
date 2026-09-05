@@ -15,7 +15,8 @@
     "url_pattern": "https://cdon.fi/lelut/kerailykortit/pokemon-kortit/?page={page}",
     "max_pages": 25
   },
-  "disabled": false,
+  "disabled": true,
+  "disabled_reason": "Products are too expensive for this tracker's purpose.",
   "confidence": "medium",
   "notes": "Playwright required — React/Next.js app, products lazy-load via JS. Uses stable data-cy attributes. No in-stock badge on listing tiles (out-of-stock items simply don't appear). Up to 25 pages."
 }
