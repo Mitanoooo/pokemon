@@ -1,3 +1,4 @@
+import concurrent.futures
 from typing import Optional
 
 import requests
@@ -14,7 +15,12 @@ _HEADERS = {
 # urllib3's DNS/SSL messages run to 300+ chars; keep last_error readable.
 _MAX_CAUSE_CHARS = 160
 
-# Lazily initialised on first playwright fetch; lives for the process lifetime.
+# Playwright's sync API raises "sync API inside asyncio loop" if called from a
+# thread that already has a running event loop — which its own internals create.
+# A single-worker executor pins all playwright work to one dedicated thread
+# where asyncio.get_running_loop() always raises (no loop), while still
+# reusing the browser instance across fetches.
+_pw_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
 _pw_instance = None
 _pw_browser = None
 
@@ -52,6 +58,13 @@ def fetch(url: str, config: Optional[dict] = None) -> str:
     return resp.text
 
 
+def _ensure_executor() -> concurrent.futures.ThreadPoolExecutor:
+    global _pw_executor
+    if _pw_executor is None:
+        _pw_executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    return _pw_executor
+
+
 def _ensure_browser():
     global _pw_instance, _pw_browser
     if _pw_browser is None:
@@ -61,8 +74,7 @@ def _ensure_browser():
     return _pw_browser
 
 
-def _playwright_fetch(url: str, config: dict) -> str:
-    """Fetch a JS-rendered page via Playwright Chromium."""
+def _do_playwright_fetch(url: str, config: dict) -> str:
     browser = _ensure_browser()
     wait_for = config.get("playwright_wait_for")
     page = browser.new_page(extra_http_headers=_HEADERS)
@@ -81,6 +93,12 @@ def _playwright_fetch(url: str, config: dict) -> str:
         raise FetchError(f"{type(exc).__name__}: {_trim(str(exc))} for {url}") from exc
     finally:
         page.close()
+
+
+def _playwright_fetch(url: str, config: dict) -> str:
+    """Run the playwright fetch in the dedicated executor thread."""
+    future = _ensure_executor().submit(_do_playwright_fetch, url, config)
+    return future.result()
 
 
 def _trim(cause: str) -> str:
