@@ -38,7 +38,7 @@ def fetch(url: str, config: Optional[dict] = None) -> str:
         raise NotImplementedError("playwright fetch is not yet implemented")
 
     try:
-        resp = requests.get(url, headers=_HEADERS, timeout=20)
+        resp = requests.get(url, headers=_HEADERS, timeout=35)
     except Exception as exc:
         raise FetchError(f"{type(exc).__name__}: {_trim(str(exc))} for {url}") from exc
 

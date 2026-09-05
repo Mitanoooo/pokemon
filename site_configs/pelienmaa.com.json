@@ -10,19 +10,25 @@
   ],
   "method": "css",
   "selectors": {
-    "product_container": null,
-    "product_name": null,
-    "price": null,
-    "product_url": null
+    "product_container": "div.card-wrapper.product-card-wrapper",
+    "product_name": ".card__heading a",
+    "price": ".price-item.price-item--regular",
+    "product_url": ".card__heading a"
+  },
+  "availability": {
+    "presence": {
+      "selector": ".price--sold-out",
+      "present": "out_of_stock",
+      "absent": "in_stock"
+    }
   },
   "pagination": {
-    "type": "none",
-    "selector": null,
-    "url_pattern": null,
-    "max_pages": null
+    "type": "url_pattern",
+    "url_pattern": "?page={page}",
+    "max_pages": 3
   },
-  "disabled": true,
-  "disabled_reason": "All selectors null — site blocked by corporate proxy on dev machine. Reachable from Hetzner? Re-enable and run selector analysis post-deployment.",
-  "confidence": "low",
-  "notes": "BLOCKED — not reachable from this machine at all: the corporate network security proxy intercepts the request and returns its own 'Tietoturvailmoitus' (security notice) page categorizing the site under 'games' and refusing access, before any Shopify/site content is served. No product HTML was ever seen, so no selectors could be inferred. Needs to be revisited from a network without this category block, or via a different fetch method not subject to the corporate proxy."
+  "decimal_separator": "comma",
+  "disabled": false,
+  "confidence": "high",
+  "notes": "Shopify Dawn theme. card-wrapper.product-card-wrapper contains each product. Sold-out signal: .price--sold-out class on the price wrapper. Collections are small (8-20 products each), max_pages=3 is a safe ceiling."
 }
