@@ -1,14 +1,18 @@
 {
   "site_name": "Verkkokauppa.com",
-  "source_url": "https://www.verkkokauppa.com/fi/brand/pokemon",
+  "source_url": "https://www.verkkokauppa.com/fi/brand/pokemon?filter%5BAvailableImmediatelyAllChannels%5D=immediately_shippable%2Cjs%2Coul%2Cpak%2Cpir%2Crai",
   "method": "css",
   "fetch_method": "playwright",
   "playwright_wait_for": "article[data-product-id]:not([data-product-id='0'])",
   "selectors": {
-    "product_container": "article[data-product-id]",
+    "product_container": "article[data-product-id]:not([data-product-id='0'])",
     "product_name": "h3",
     "price": ".stm-price__root",
     "product_url": "a[href*='/product/']"
+  },
+  "availability": {
+    "absent_means": "out_of_stock",
+    "default": "in_stock"
   },
   "pagination": {
     "type": "none",
@@ -16,6 +20,6 @@
     "max_pages": 1
   },
   "disabled": false,
-  "confidence": "medium",
-  "notes": "Playwright required — product tiles are JS-rendered. Container: article[data-product-id] (id='0' are placeholders, wait for non-zero). Price class .stm-price__root is a stable design-system token. No in-stock signal on listing tiles. ~48 products on one page."
+  "confidence": "high",
+  "notes": "Playwright required — product tiles are JS-rendered. Stock-filtered URL: only in-stock products appear, same pattern as Prisma. A product dropping off the listing means it went out of stock (absent_means). ~12 products currently. Price class .stm-price__root is a stable design-system token. Container selector excludes data-product-id='0' placeholder shells."
 }
