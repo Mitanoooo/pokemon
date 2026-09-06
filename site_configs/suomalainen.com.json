@@ -15,7 +15,8 @@
     "url_pattern": "https://www.suomalainen.com/collections/pokemon?page={page}",
     "max_pages": 3
   },
-  "disabled": false,
+  "disabled": true,
+  "disabled_reason": "Disabled on request.",
   "confidence": "medium",
   "notes": "Playwright required — Algolia InstantSearch, product list only appears after JS execution. No availability signal on listing tiles. Price format: '27.95 €' inside p.ais-hit--price > b. URL-based pagination may or may not work with Algolia routing — reduce max_pages if pages repeat."
 }
