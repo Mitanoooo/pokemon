@@ -295,10 +295,15 @@ def get_site_overview(conn: sqlite3.Connection) -> list[dict]:
 
 # ── updates ───────────────────────────────────────────────────────────────────
 
-def write_updates(conn: sqlite3.Connection, events: list[dict]) -> None:
-    """Bulk-insert update events into the updates table."""
+def write_updates(conn: sqlite3.Connection, events: list[dict]) -> list[int]:
+    """Bulk-insert update events into the updates table, returning their row ids.
+
+    The ids are what the caller alerts on: they name exactly the rows this call
+    wrote, so an alert posted mid-run cannot repeat an earlier page's events.
+    """
+    ids = []
     for e in events:
-        conn.execute(
+        cur = conn.execute(
             """
             INSERT INTO updates
                 (run_id, site_id, raw_name, event_type, old_value, new_value)
@@ -313,7 +318,9 @@ def write_updates(conn: sqlite3.Connection, events: list[dict]) -> None:
                 e.get("new_value"),
             ),
         )
+        ids.append(cur.lastrowid)
     conn.commit()
+    return ids
 
 
 def prune_updates(conn: sqlite3.Connection, days: int = 180) -> None:

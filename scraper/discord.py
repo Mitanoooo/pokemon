@@ -44,8 +44,19 @@ def _fmt_price(row: dict) -> str:
 
 
 def notify_matches(
-    conn: sqlite3.Connection, run_id: int, webhook_url: str
+    conn: sqlite3.Connection,
+    webhook_url: str,
+    update_ids: list[int],
 ) -> None:
+    """Post one message for the given update rows that match a keyword or watched site.
+
+    The caller passes the ids it just wrote rather than a run or a site, so the
+    scraper can alert on a single page's events the moment they land without the
+    next page's post repeating them.
+    """
+    if not update_ids:
+        return
+
     keywords = [
         r["keyword"]
         for r in conn.execute(
@@ -60,18 +71,19 @@ def notify_matches(
     if not keywords and not watch_site_ids:
         return
 
+    placeholders = ",".join("?" * len(update_ids))
     rows = conn.execute(
-        """
+        f"""
         SELECT u.raw_name, u.event_type, u.old_value, u.new_value,
                u.site_id, s.name AS site_name, l.product_url,
                l.latest_price, l.latest_currency
         FROM updates u
         LEFT JOIN sites s ON s.id = u.site_id
         LEFT JOIN listings l ON l.site_id = u.site_id AND l.raw_name = u.raw_name
-        WHERE u.run_id = ?
+        WHERE u.id IN ({placeholders})
         ORDER BY u.id
         """,
-        (run_id,),
+        update_ids,
     ).fetchall()
 
     lines = []

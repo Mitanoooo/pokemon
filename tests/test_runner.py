@@ -77,7 +77,7 @@ def test_run_site_stops_on_empty_page(conn):
     }
     fetch_calls = []
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         fetch_calls.append(url)
         return "<html>ok</html>"
 
@@ -257,7 +257,7 @@ def test_run_all_sites_exception_does_not_abort_others(tmp_path):
 
     call_count = {"n": 0}
 
-    def fetch_side_effect(url, **kwargs):
+    def fetch_side_effect(url, config=None, **kwargs):
         call_count["n"] += 1
         if "site-a" in url:
             raise RuntimeError("site A exploded")
@@ -820,7 +820,7 @@ def _run_with_pages(cfg, products_by_url, conn):
     """
     fetched = []
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         fetched.append(url)
         return url
 
@@ -976,7 +976,7 @@ def test_run_site_source_urls_health_success_when_any_url_yields_products(conn):
 def test_run_site_source_urls_fetch_failure_marks_site_failure(conn):
     cfg = _cfg(source_urls=["https://example.fi/a", "https://example.fi/b"])
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         if url.endswith("/b"):
             raise FetchError("HTTP 500")
         return url
@@ -1004,7 +1004,7 @@ def test_run_site_page_failure_still_emits_the_earlier_pages_events(conn):
     }, conn)
     assert _event_types(conn) == []  # first run is silent
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         if url.endswith("?page=2"):
             raise FetchError("HTTP 500 for " + url, 500)
         return url
@@ -1037,7 +1037,7 @@ def test_run_site_source_urls_failure_still_emits_the_earlier_urls_events(conn):
     }, conn)
     assert _event_types(conn) == []  # first run is silent
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         if url.endswith("/b"):
             raise FetchError("HTTP 500")
         return url
@@ -1079,7 +1079,7 @@ def test_run_site_404_on_later_page_ends_pagination_not_the_site(conn):
     """A 404 past page 1 is how WooCommerce says "no more pages"."""
     cfg = _paged_cfg(["https://example.fi/a"])
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         if url.endswith("?page=2"):
             raise FetchError("HTTP 404 for " + url, 404)
         return url
@@ -1112,7 +1112,7 @@ def test_run_site_404_on_later_page_keeps_other_source_urls(conn):
     """TCG-kauppa's regression: one short category must not void the whole site."""
     cfg = _paged_cfg(["https://example.fi/a", "https://example.fi/b"])
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         if url == "https://example.fi/a?page=2":
             raise FetchError("HTTP 404 for " + url, 404)
         return url
@@ -1194,7 +1194,7 @@ def test_run_site_reads_a_preorder_url_page_as_preorder(conn):
     pages = {"https://example.fi/shop/": page("Normal Box"),
              "https://example.fi/ennakkotilaus/": page("Preorder Box")}
 
-    with patch("scraper.runner.fetch", side_effect=lambda url, **kw: pages[url]), \
+    with patch("scraper.runner.fetch", side_effect=lambda url, config=None, **kw: pages[url]), \
          patch("scraper.runner.time.sleep"):
         run_site(cfg, conn)
 
@@ -1235,7 +1235,7 @@ def test_run_site_dropping_a_listing_off_the_preorder_url_clears_the_flag(conn):
 def test_run_site_preorder_url_failure_marks_the_site_unhealthy(conn):
     cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         if "ennakkotilaus" in url:
             raise FetchError("HTTP 500 for " + url, 500)
         return url
@@ -1255,7 +1255,7 @@ def test_run_site_non_404_error_on_later_page_still_fails(conn):
     """A 500 mid-pagination is a real failure, not an end-of-listing signal."""
     cfg = _paged_cfg(["https://example.fi/a"])
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         if url.endswith("?page=2"):
             raise FetchError("HTTP 500 for " + url, 500)
         return url
@@ -1364,7 +1364,7 @@ def test_run_site_no_absent_sweep_when_a_page_failed(conn):
         "https://example.fi/a?page=2": _named_products("A2"),
     }, conn)
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         if url.endswith("?page=2"):
             raise FetchError("HTTP 500 for " + url, 500)
         return url
@@ -1386,7 +1386,7 @@ def test_run_site_no_absent_sweep_when_one_of_the_source_urls_failed(conn):
         "https://example.fi/b": _named_products("B1"),
     }, conn)
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         if url.endswith("/b"):
             raise FetchError("HTTP 500")
         return url
@@ -1471,7 +1471,7 @@ def test_run_site_stops_when_a_page_repeats_the_previous_one(conn):
     cfg = _paginated_cfg(6)
     fetched = []
 
-    def fake_fetch(url, **kwargs):
+    def fake_fetch(url, config=None, **kwargs):
         fetched.append(url)
         return "<html>ok</html>"
 

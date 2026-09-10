@@ -170,7 +170,7 @@ def _build_update_events(
     listings have never been recorded, and its whole catalogue must not land in
     the feed as new.
     """
-    # Last occurrence of each raw_name wins (handles multi-page duplicates)
+    # Last occurrence of each raw_name in this batch wins
     deduped: dict[str, dict] = {}
     for p in products:
         deduped[p["raw_name"]] = p
@@ -238,6 +238,65 @@ def _build_update_events(
     return events
 
 
+class _EventReporter:
+    """Writes the events one page implies and alerts on them straight away.
+
+    One instance per site per run. The diff runs per page instead of once the
+    site's last page is in, so a keyword hit reaches Discord while the remaining
+    pages and source URLs are still being fetched. It also means the events of a
+    scrape that fails halfway are already committed.
+
+    The first page a raw_name appears on is the one that gets diffed; a later
+    page repeating it is dropped, so a product listed in two categories is
+    reported once, as early as it was seen.
+    """
+
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        site_id: int,
+        run_id: int,
+        pre_state: dict,
+        webhook_url: str,
+    ) -> None:
+        self._conn = conn
+        self._site_id = site_id
+        self._run_id = run_id
+        self._pre_state = pre_state
+        self._webhook_url = webhook_url
+        self._reported: set[str] = set()
+
+    def report(self, products: list[dict]) -> None:
+        # An empty pre_state is a brand-new site: record its catalogue silently.
+        if not self._pre_state:
+            return
+
+        fresh = [p for p in products if p["raw_name"] not in self._reported]
+        if not fresh:
+            return
+        self._reported.update(p["raw_name"] for p in fresh)
+
+        events = _build_update_events(
+            self._site_id, self._run_id, fresh, self._pre_state
+        )
+        if not events:
+            return
+        update_ids = db.write_updates(self._conn, events)
+        self._notify(update_ids)
+
+    def _notify(self, update_ids: list[int]) -> None:
+        if not self._webhook_url:
+            return
+        try:
+            _discord.notify_matches(self._conn, self._webhook_url, update_ids)
+        except Exception as exc:
+            # A dead webhook must not abort the scrape or be recorded as the
+            # site's last_error.
+            logger.warning(
+                "Discord notification failed for site %d: %s", self._site_id, exc
+            )
+
+
 def _scrape_source_url(
     conn: sqlite3.Connection,
     config: dict,
@@ -246,14 +305,16 @@ def _scrape_source_url(
     source_url: str,
     sleep_first: bool,
     products_seen: list[dict],
+    reporter: _EventReporter,
     from_preorder_url: bool = False,
 ) -> int:
     """Scrape every page of one source URL, appending its products to products_seen.
 
-    Returns the page count. Listings are upserted page by page, as they are read,
-    and the caller owns products_seen so that a page that fails mid-pagination
-    still leaves the earlier pages' products with it: those listings are already
-    committed, so their events have to be written or the change is lost.
+    Returns the page count. Listings are upserted and their events reported page
+    by page, as they are read, so an alert goes out as soon as the product is
+    seen and a page that fails mid-pagination leaves the earlier pages' work
+    committed. The caller owns products_seen, which the site-wide checks
+    (absent_means, health) need once every page is in.
 
     sleep_first jitters before the very first fetch, which is how the inter-page
     sleep also lands between the source URLs of a multi-URL site.
@@ -334,6 +395,10 @@ def _scrape_source_url(
                 from_preorder_url=from_preorder_url,
             )
 
+        # After the upserts: the alert reads the product's price and URL off the
+        # listing row the sighting just wrote.
+        reporter.report(products)
+
         products_seen.extend(products)
 
         skipped = _null_price_count(products)
@@ -359,7 +424,10 @@ def _scrape_source_url(
 
 
 def run_site(
-    config: dict, conn: sqlite3.Connection, run_id: Optional[int] = None
+    config: dict,
+    conn: sqlite3.Connection,
+    run_id: Optional[int] = None,
+    discord_webhook_url: str = "",
 ) -> None:
     """Scrape one site and persist its listings and the events they imply.
 
@@ -369,6 +437,9 @@ def run_site(
 
     run_id is normally supplied by run_all_sites() so every site in one batch
     shares a run. When called standalone it opens (and closes) its own run.
+
+    With discord_webhook_url set, a matching event goes out on the page it was
+    found on, without waiting for the site's remaining pages or the batch.
     """
     site_source_urls = source_urls(config)
     site_name = config.get("site_name", site_source_urls[0])
@@ -382,30 +453,23 @@ def run_site(
     all_products: list[dict] = []
     pages_fetched = 0
     try:
-        # Snapshot state before this run's upserts for event diffing.
+        # Snapshot state before this run's upserts for event diffing: every page's
+        # diff is against the state the site was in when the run started.
         pre_state = db.get_listing_state(conn, site_id)
+        reporter = _EventReporter(
+            conn, site_id, run_id, pre_state, discord_webhook_url
+        )
 
-        # _scrape_source_url commits its listings page by page, so a failure
-        # partway through leaves the earlier pages' rows updated. The events go in
-        # under `finally` for that reason: dropping them would leave the next run
-        # diffing against those updated rows, and the price drop or restock in
-        # between would never be reported at all.
-        try:
-            for i, (source_url, is_preorder) in enumerate(tagged_source_urls(config)):
-                pages_fetched += _scrape_source_url(
-                    conn, config, site_id, run_id, source_url, sleep_first=i > 0,
-                    products_seen=all_products, from_preorder_url=is_preorder,
-                )
-            # Every source URL of the site came back, so a listing missing from
-            # all of them really is missing. This has to stay inside the try and
-            # out of the finally: a partial scrape must not sweep anything.
-            _apply_absent_means(conn, config, site_id, all_products, pre_state)
-        finally:
-            # An empty pre_state is a brand-new site: record its catalogue silently.
-            if all_products and pre_state:
-                events = _build_update_events(site_id, run_id, all_products, pre_state)
-                if events:
-                    db.write_updates(conn, events)
+        for i, (source_url, is_preorder) in enumerate(tagged_source_urls(config)):
+            pages_fetched += _scrape_source_url(
+                conn, config, site_id, run_id, source_url, sleep_first=i > 0,
+                products_seen=all_products, reporter=reporter,
+                from_preorder_url=is_preorder,
+            )
+        # Every source URL of the site came back, so a listing missing from all of
+        # them really is missing. A partial scrape must not sweep anything, which
+        # is why this sits after the loop rather than in a finally.
+        _apply_absent_means(conn, config, site_id, all_products, pre_state)
 
         priced = _priced_name_count(all_products)
         if not priced:
@@ -468,9 +532,8 @@ def run_all_sites(
                 )
                 continue
 
-            run_site(config, conn, run_id=run_id)
+            run_site(config, conn, run_id=run_id,
+                     discord_webhook_url=discord_webhook_url)
     finally:
         db.prune_updates(conn)
         db.finish_run(conn, run_id)
-        if discord_webhook_url:
-            _discord.notify_matches(conn, run_id, discord_webhook_url)
