@@ -21,7 +21,7 @@ State at the start of this initiative: 2,738 distinct raw names, 450 of them unm
 - Price events are split into `price_drop` / `price_rise` at write time; the UI hides rises and applies a minimum-drop percentage
 - A site's first run emits no events
 - Email is dropped for now. If it comes back it is built on `updates`, not on thresholds
-- Updates retention stays 30 days
+- Updates retention is 180 days, and the scraper runs every 20 min round the clock. Both are for restock-timing analysis, not for the feed: the Updates page still shows 30 days at most
 
 ## Open tickets (frontier → blocked)
 
@@ -62,7 +62,8 @@ Two earlier initiatives are closed and superseded:
 
 - Whether shops with no separate preorder page can have preorders detected from badges alone (ticket 17 records the cases, ticket 18 decides per site)
 - What to do about a shop renaming a product, which currently reads as a new listing
-- Whether `updates` needs a longer window than 30 days once the feed is the only view
+- How restock-timing analysis reads the 180-day `updates` history: not the Updates page, whose 1,000-row cap is applied before the minimum-drop filter and so truncates any window that wide. Grouping must be on Helsinki local hour, since `created_at` is UTC and DST would otherwise smear March and October across two buckets
+- `count_unread_updates` is the one query with no window and no index on `seen`, so a long-unread backlog now counts across six months instead of one. Cheap enough to scan, but the number stops meaning anything
 
 ## Out of scope
 

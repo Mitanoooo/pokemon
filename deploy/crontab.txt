@@ -1,3 +1,5 @@
 # Pokemon Price Tracker — all times UTC (Finland is EEST = UTC+3 in summer, EET = UTC+2 in winter)
-# Scraper: every 20 min, 02:00–17:00 UTC = 05:00–20:00 EEST (summer) / 04:00–19:00 EET (winter)
-*/20 2-17 * * *  cd /opt/pokemon && venv/bin/python -m scraper >> logs/scraper.log 2>&1
+# Scraper: every 20 min, round the clock. The overnight hours are not there for the
+# feed but for restock-timing analysis: a gap stamps every overnight restock with
+# the first morning run, which is the one thing that analysis must not do.
+*/20 * * * *  cd /opt/pokemon && venv/bin/python -m scraper >> logs/scraper.log 2>&1

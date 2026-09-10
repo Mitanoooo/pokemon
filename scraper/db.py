@@ -316,8 +316,14 @@ def write_updates(conn: sqlite3.Connection, events: list[dict]) -> None:
     conn.commit()
 
 
-def prune_updates(conn: sqlite3.Connection, days: int = 30) -> None:
-    """Delete update rows older than `days` days."""
+def prune_updates(conn: sqlite3.Connection, days: int = 180) -> None:
+    """Delete update rows older than `days` days.
+
+    The window is set by restock-timing analysis, not by the Updates page, which
+    never looks past 30 days. Six months of events at a few hundred a day is
+    single-digit megabytes, so the retention cost is nothing next to needing a
+    year of history to see which hour of the day a shop restocks in.
+    """
     conn.execute(
         "DELETE FROM updates WHERE created_at < datetime('now', ?)",
         (f"-{days} days",),

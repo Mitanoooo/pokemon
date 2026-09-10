@@ -384,6 +384,23 @@ def test_prune_updates_deletes_old_rows_leaves_recent(conn, site_id):
     assert names == ["New Box"]
 
 
+def test_prune_updates_default_window_keeps_rows_older_than_the_page_shows(conn, site_id):
+    """The default outlives the 30-day Updates window, for restock-timing analysis."""
+    run_id = db.start_run(conn)
+    for name, age_days in (("Six Months Ago", 200), ("Two Months Ago", 60)):
+        conn.execute(
+            "INSERT INTO updates (run_id, site_id, raw_name, event_type, created_at) "
+            "VALUES (?, ?, ?, 'new_listing', datetime('now', ?))",
+            (run_id, site_id, name, f"-{age_days} days"),
+        )
+    conn.commit()
+
+    db.prune_updates(conn)
+
+    names = [r["raw_name"] for r in conn.execute("SELECT raw_name FROM updates").fetchall()]
+    assert names == ["Two Months Ago"]
+
+
 # ── get_updates ───────────────────────────────────────────────────────────────
 
 def test_get_updates_returns_matching_rows_newest_first(conn, site_id):
