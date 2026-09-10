@@ -1216,6 +1216,35 @@ def test_run_site_listing_on_both_urls_keeps_the_last_sighting_flag(conn):
     assert _flag_by_name(conn) == {"Shared Box": 1}
 
 
+def test_run_site_listing_on_both_urls_does_not_restock_every_run(conn):
+    """A shared listing must not alert on a sighting the same run overwrites.
+
+    PBCards carries one preorder box in both its normal collection and its
+    preorder collection. The normal page badges it in stock, the preorder URL
+    reads it as a preorder, and preorder URLs are scraped last, so the row
+    settles on preorder. Diffing the earlier in-stock sighting fired
+    back_in_stock on every run, for ever.
+    """
+    cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
+    pages = {
+        "https://example.fi/shop/": [
+            {"raw_name": "Shared Box", "price": 9.99,
+             "availability": "in_stock", "product_url": "/p"},
+        ],
+        "https://example.fi/ennakkotilaus/": [
+            {"raw_name": "Shared Box", "price": 9.99,
+             "availability": "preorder", "product_url": "/p"},
+        ],
+    }
+    _run_with_pages(cfg, pages, conn)
+    _run_with_pages(cfg, pages, conn)
+
+    assert conn.execute(
+        "SELECT availability FROM listings"
+    ).fetchone()["availability"] == "preorder"
+    assert conn.execute("SELECT COUNT(*) FROM updates").fetchone()[0] == 0
+
+
 def test_run_site_dropping_a_listing_off_the_preorder_url_clears_the_flag(conn):
     """The flag means "seen on a preorder URL last run", not "ever seen on one"."""
     cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
