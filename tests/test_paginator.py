@@ -232,25 +232,25 @@ def test_tagged_source_urls_tags_a_plain_source_url_as_normal():
     ]
 
 
-def test_tagged_source_urls_appends_preorder_urls_tagged():
+def test_tagged_source_urls_prepends_preorder_urls_tagged():
     cfg = {
         "source_urls": ["https://example.com/a", "https://example.com/b"],
         "preorder_urls": ["https://example.com/ennakkotilaus"],
     }
     assert tagged_source_urls(cfg) == [
+        ("https://example.com/ennakkotilaus", True),
         ("https://example.com/a", False),
         ("https://example.com/b", False),
-        ("https://example.com/ennakkotilaus", True),
     ]
 
 
-def test_tagged_source_urls_puts_preorder_urls_last():
-    """Last sighting wins the dedupe, so the preorder flag must be set last."""
+def test_tagged_source_urls_puts_preorder_urls_first():
+    """A preorder sighting claims the name, so it has to be the first one made."""
     cfg = {
         "source_url": "https://example.com/a",
         "preorder_urls": ["https://example.com/p1", "https://example.com/p2"],
     }
-    assert [flag for _, flag in tagged_source_urls(cfg)] == [False, True, True]
+    assert [flag for _, flag in tagged_source_urls(cfg)] == [True, True, False]
 
 
 def test_tagged_source_urls_without_preorder_urls_matches_source_urls():

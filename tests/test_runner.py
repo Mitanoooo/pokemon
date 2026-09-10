@@ -1145,7 +1145,7 @@ def test_run_site_scrapes_preorder_urls_too(conn):
         "https://example.fi/ennakkotilaus/": _named_products("P1"),
     }, conn)
 
-    assert fetched == ["https://example.fi/shop/", "https://example.fi/ennakkotilaus/"]
+    assert fetched == ["https://example.fi/ennakkotilaus/", "https://example.fi/shop/"]
     assert _flag_by_name(conn) == {"A1": 0, "P1": 1}
 
 
@@ -1173,8 +1173,8 @@ def test_run_site_preorder_urls_paginate_like_the_others(conn):
         "https://example.fi/ennakko?page=2": _named_products("P3"),
     }, conn)
 
-    assert fetched == ["https://example.fi/shop/", "https://example.fi/shop/?page=2",
-                       "https://example.fi/ennakko", "https://example.fi/ennakko?page=2"]
+    assert fetched == ["https://example.fi/ennakko", "https://example.fi/ennakko?page=2",
+                       "https://example.fi/shop/", "https://example.fi/shop/?page=2"]
     assert _flag_by_name(conn) == {"A1": 0, "A2": 0, "A3": 0, "P1": 1, "P2": 1, "P3": 1}
 
 
@@ -1205,8 +1205,8 @@ def test_run_site_reads_a_preorder_url_page_as_preorder(conn):
                     "Preorder Box": ("preorder", "(preorder url)", 1)}
 
 
-def test_run_site_listing_on_both_urls_keeps_the_last_sighting_flag(conn):
-    """Preorder URLs come last, so a shared listing reads as a preorder."""
+def test_run_site_listing_on_both_urls_keeps_the_preorder_flag(conn):
+    """Preorder URLs come first and claim the name, so a shared listing is a preorder."""
     cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
     _run_with_pages(cfg, {
         "https://example.fi/shop/": _named_products("Shared Box"),
@@ -1217,13 +1217,12 @@ def test_run_site_listing_on_both_urls_keeps_the_last_sighting_flag(conn):
 
 
 def test_run_site_listing_on_both_urls_does_not_restock_every_run(conn):
-    """A shared listing must not alert on a sighting the same run overwrites.
+    """A shared listing must not alert on the normal collection's in-stock badge.
 
     PBCards carries one preorder box in both its normal collection and its
     preorder collection. The normal page badges it in stock, the preorder URL
-    reads it as a preorder, and preorder URLs are scraped last, so the row
-    settles on preorder. Diffing the earlier in-stock sighting fired
-    back_in_stock on every run, for ever.
+    reads it as a preorder, and the row settles on preorder — so diffing the
+    in-stock sighting fired back_in_stock on every run, for ever.
     """
     cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
     pages = {
@@ -1245,6 +1244,46 @@ def test_run_site_listing_on_both_urls_does_not_restock_every_run(conn):
     assert conn.execute("SELECT COUNT(*) FROM updates").fetchone()[0] == 0
 
 
+def test_run_site_shared_listing_survives_the_normal_url_failing_midway(conn):
+    """The claim has to hold when the normal collection dies mid-pagination.
+
+    PBCards' normal collection 503s a page or two in often enough. The preorder
+    URL is fetched first for exactly this reason: whatever the failing run
+    manages to read, the shared listing is already claimed as a preorder, so no
+    back_in_stock goes out and the row is not left in stock for the next run to
+    diff against.
+    """
+    cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
+    cfg["pagination"] = {"type": "url_pattern", "url_pattern": "?page={page}",
+                         "max_pages": 3}
+    pages = {
+        "https://example.fi/ennakkotilaus/": [
+            {"raw_name": "Shared Box", "price": 9.99,
+             "availability": "preorder", "product_url": "/p"},
+        ],
+        "https://example.fi/shop/": [
+            {"raw_name": "Shared Box", "price": 9.99,
+             "availability": "in_stock", "product_url": "/p"},
+        ],
+    }
+
+    def fake_fetch(url, config=None, **kwargs):
+        if url == "https://example.fi/shop/?page=2":
+            raise FetchError("HTTP 503 for " + url, 503)
+        return url
+
+    for _ in range(2):
+        with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+             patch("scraper.runner.scrape_page",
+                   side_effect=lambda html, cfg_, **kw: pages.get(html, [])), \
+             patch("scraper.runner.time.sleep"):
+            run_site(cfg, conn)
+
+    row = conn.execute("SELECT availability, from_preorder_url FROM listings").fetchone()
+    assert (row["availability"], row["from_preorder_url"]) == ("preorder", 1)
+    assert conn.execute("SELECT COUNT(*) FROM updates").fetchone()[0] == 0
+
+
 def test_run_site_dropping_a_listing_off_the_preorder_url_clears_the_flag(conn):
     """The flag means "seen on a preorder URL last run", not "ever seen on one"."""
     cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
@@ -1259,6 +1298,23 @@ def test_run_site_dropping_a_listing_off_the_preorder_url_clears_the_flag(conn):
         "https://example.fi/ennakkotilaus/": [],
     }, conn)
     assert _flag_by_name(conn) == {"Box": 0}
+
+
+def test_run_site_preorder_going_on_sale_still_reports_back_in_stock(conn):
+    """The claim must not swallow a real release: the shop drops it off the preorder URL."""
+    cfg = _cfg(extra={"preorder_urls": ["https://example.fi/ennakkotilaus/"]})
+    box = {"raw_name": "Shared Box", "price": 9.99, "product_url": "/p"}
+    _run_with_pages(cfg, {
+        "https://example.fi/shop/": [{**box, "availability": "in_stock"}],
+        "https://example.fi/ennakkotilaus/": [{**box, "availability": "preorder"}],
+    }, conn)
+    _run_with_pages(cfg, {
+        "https://example.fi/shop/": [{**box, "availability": "in_stock"}],
+        "https://example.fi/ennakkotilaus/": [],
+    }, conn)
+
+    events = [r["event_type"] for r in conn.execute("SELECT event_type FROM updates")]
+    assert events == ["back_in_stock"]
 
 
 def test_run_site_preorder_url_failure_marks_the_site_unhealthy(conn):

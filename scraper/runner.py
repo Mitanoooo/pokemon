@@ -248,13 +248,9 @@ class _EventReporter:
 
     The first page a raw_name appears on is the one that gets diffed; a later
     page repeating it is dropped, so a product listed in two categories is
-    reported once, as early as it was seen.
-
-    `defer` turns that off and holds every sighting until `flush`. It is for the
-    sites whose config has preorder_urls, where first-page-wins is the wrong
-    answer: those URLs are scraped last precisely so their preorder flag beats
-    the plain in-stock badge the same product carries in the normal collection,
-    and reporting the earlier sighting alerts on a state the run then overwrites.
+    reported once, as early as it was seen. For that to be the right sighting,
+    the caller must not hand over one the run goes on to overwrite — which is
+    what the preorder claim in _scrape_source_url is for.
     """
 
     def __init__(
@@ -264,46 +260,26 @@ class _EventReporter:
         run_id: int,
         pre_state: dict,
         webhook_url: str,
-        defer: bool = False,
     ) -> None:
         self._conn = conn
         self._site_id = site_id
         self._run_id = run_id
         self._pre_state = pre_state
         self._webhook_url = webhook_url
-        self._defer = defer
         self._reported: set[str] = set()
-        self._pending: list[dict] = []
 
     def report(self, products: list[dict]) -> None:
         # An empty pre_state is a brand-new site: record its catalogue silently.
         if not self._pre_state:
             return
 
-        if self._defer:
-            self._pending.extend(products)
-            return
-
         fresh = [p for p in products if p["raw_name"] not in self._reported]
         if not fresh:
             return
         self._reported.update(p["raw_name"] for p in fresh)
-        self._write(fresh)
 
-    def flush(self) -> None:
-        """Report everything held back by `defer`. A no-op otherwise.
-
-        _build_update_events dedupes last-occurrence-wins, so the sighting that
-        gets diffed is the one the run leaves in the listings row.
-        """
-        if not self._pending:
-            return
-        pending, self._pending = self._pending, []
-        self._write(pending)
-
-    def _write(self, products: list[dict]) -> None:
         events = _build_update_events(
-            self._site_id, self._run_id, products, self._pre_state
+            self._site_id, self._run_id, fresh, self._pre_state
         )
         if not events:
             return
@@ -332,6 +308,7 @@ def _scrape_source_url(
     sleep_first: bool,
     products_seen: list[dict],
     reporter: _EventReporter,
+    preorder_claims: set,
     from_preorder_url: bool = False,
 ) -> int:
     """Scrape every page of one source URL, appending its products to products_seen.
@@ -348,6 +325,9 @@ def _scrape_source_url(
     from_preorder_url says this URL came from the config's preorder_urls; it
     reaches both the parser (where it outranks every availability form) and the
     listings row (where the column records it for the event diff).
+
+    preorder_claims is shared across the site's source URLs for the whole run;
+    see the claim comment below.
     """
     site_name = config.get("site_name", source_url)
     currency = _currency_for(source_url)
@@ -403,10 +383,22 @@ def _scrape_source_url(
 
         page_counts.append(len(products))
 
+        # A preorder sighting claims the name for the rest of the run, and a
+        # normal collection listing the same product is then ignored: the shop
+        # badges it in stock there (you can order it), and taking that sighting
+        # would both overwrite the preorder row and report a restock. Claiming is
+        # what makes this survive a partial scrape — the sighting that wins does
+        # not depend on a later page arriving.
+        if from_preorder_url:
+            preorder_claims.update(p["raw_name"] for p in products)
+            unclaimed = products
+        else:
+            unclaimed = [p for p in products if p["raw_name"] not in preorder_claims]
+
         # Every sighting lands in listings — including price-less ones, so
         # they do not look brand new next run. This must stay ahead of the
         # valid-price filter in run_site.
-        for p in products:
+        for p in unclaimed:
             p["currency"] = currency
             db.upsert_listing(
                 conn,
@@ -423,9 +415,9 @@ def _scrape_source_url(
 
         # After the upserts: the alert reads the product's price and URL off the
         # listing row the sighting just wrote.
-        reporter.report(products)
+        reporter.report(unclaimed)
 
-        products_seen.extend(products)
+        products_seen.extend(unclaimed)
 
         skipped = _null_price_count(products)
         if skipped:
@@ -483,23 +475,16 @@ def run_site(
         # diff is against the state the site was in when the run started.
         pre_state = db.get_listing_state(conn, site_id)
         reporter = _EventReporter(
-            conn, site_id, run_id, pre_state, discord_webhook_url,
-            defer=bool(config.get("preorder_urls")),
+            conn, site_id, run_id, pre_state, discord_webhook_url
         )
 
-        try:
-            for i, (source_url, is_preorder) in enumerate(tagged_source_urls(config)):
-                pages_fetched += _scrape_source_url(
-                    conn, config, site_id, run_id, source_url, sleep_first=i > 0,
-                    products_seen=all_products, reporter=reporter,
-                    from_preorder_url=is_preorder,
-                )
-        finally:
-            # Held-back events go in even if a source URL failed: the listings of
-            # the pages that did land are already updated, so dropping their
-            # events would leave the next run diffing against them and lose the
-            # restock or price drop in between for good.
-            reporter.flush()
+        preorder_claims: set = set()
+        for i, (source_url, is_preorder) in enumerate(tagged_source_urls(config)):
+            pages_fetched += _scrape_source_url(
+                conn, config, site_id, run_id, source_url, sleep_first=i > 0,
+                products_seen=all_products, reporter=reporter,
+                preorder_claims=preorder_claims, from_preorder_url=is_preorder,
+            )
         # Every source URL of the site came back, so a listing missing from all of
         # them really is missing. A partial scrape must not sweep anything, which
         # is why this sits after the loop rather than in a finally.

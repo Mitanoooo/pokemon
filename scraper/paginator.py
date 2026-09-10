@@ -22,15 +22,20 @@ def source_urls(config: dict) -> "list[str]":
 def tagged_source_urls(config: dict) -> "list[tuple[str, bool]]":
     """Every entry URL of one site paired with its from_preorder_url flag.
 
-    Preorder URLs ("preorder_urls") come after the normal ones, so a listing
-    carried by both keeps the preorder flag: sightings dedupe last-occurrence-
-    wins, both in listings and in the event diff.
+    Preorder URLs ("preorder_urls") come first, so a listing carried by both
+    reads as a preorder from the moment it is seen. Ordering them last and
+    letting the later sighting win looked equivalent, but it is not: a normal URL
+    failing mid-pagination aborts the run before the preorder URL is ever
+    fetched, leaving the shared listing on whatever its plain in-stock badge said
+    and firing a back_in_stock that the next full run undoes.
 
     source_urls() stays the normal-URLs-only helper, because the first of those
     is what identifies the site.
     """
-    urls: "list[tuple[str, bool]]" = [(u, False) for u in source_urls(config)]
-    urls += [(u, True) for u in (config.get("preorder_urls") or [])]
+    urls: "list[tuple[str, bool]]" = [
+        (u, True) for u in (config.get("preorder_urls") or [])
+    ]
+    urls += [(u, False) for u in source_urls(config)]
     return urls
 
 
