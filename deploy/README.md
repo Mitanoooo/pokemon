@@ -150,7 +150,7 @@ systemctl start pokemon-streamlit
 Verify it's listening:
 
 ```bash
-curl -s http://localhost:8502/_stcore/health
+curl -s http://localhost:8502/pokemon/_stcore/health
 # Should return: ok
 ```
 
@@ -205,7 +205,7 @@ Contents (all times UTC):
 
 | Symptom | Check |
 |---------|-------|
-| App not responding | `curl http://localhost:8502/_stcore/health` → should be `ok` |
+| App not responding | `curl http://localhost:8502/pokemon/_stcore/health` → should be `ok`. The `pokemon` prefix is required: the service runs with `--server.baseUrlPath pokemon`, so the bare path 404s |
 | Every page shows "No database connection." | Check the page-source folder is `app/views/`, not `app/pages/` — see the MPA gotcha above |
 | Scraper returns 0 products | Check `tail -20 /opt/pokemon/logs/scraper.log`; site may have changed selectors |
 | App errors on a missing column | The database predates the four-table schema — run `scripts/rebuild_db.py` and swap the file |
@@ -235,4 +235,4 @@ curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/restart
 - [ ] Run `init_db.py`
 - [ ] Install and start `pokemon-streamlit` systemd service
 - [ ] Add crontab entries
-- [ ] Verify app at `http://localhost:8502/_stcore/health`
+- [ ] Verify app at `http://localhost:8502/pokemon/_stcore/health`
