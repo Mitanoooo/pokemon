@@ -170,61 +170,64 @@ def _extract_price(container_el: Tag, config: dict) -> Optional[float]:
         return None
 
     el = container_el.select_one(sel)
-    if el is None:
-        return None
+    price = None
 
-    # karkkainen.com: price in data-ls-price attribute (dot decimal float)
-    ls_price = el.get("data-ls-price")
-    if ls_price is not None:
-        try:
-            value = float(ls_price)
-            if not within_price_bounds(value, config):
-                logger.warning("Suspicious attribute price %.2f (site: %s)", value, site_name)
+    if el is not None:
+        # karkkainen.com: price in data-ls-price attribute (dot decimal float)
+        ls_price = el.get("data-ls-price")
+        if ls_price is not None:
+            try:
+                value = float(ls_price)
+                if not within_price_bounds(value, config):
+                    logger.warning("Suspicious attribute price %.2f (site: %s)", value, site_name)
+                    return None
+                return value
+            except ValueError:
                 return None
-            return value
-        except ValueError:
-            return None
 
-    # lelupartanen.fi: bare float in itemprop="Price" content attribute
-    itemprop_price = el.get("content") if el.get("itemprop") == "Price" else None
-    if itemprop_price is None:
-        # also check price element itself
-        itemprop_el = container_el.select_one('[itemprop="Price"]')
-        if itemprop_el:
-            itemprop_price = itemprop_el.get("content")
-    if itemprop_price is not None:
-        try:
-            value = float(itemprop_price)
-        except ValueError:
-            pass
-        else:
-            # Same bounds as every other price path — an attribute placeholder
-            # is no more trustworthy than one printed in the page text.
-            if not within_price_bounds(value, config):
-                logger.warning("Suspicious attribute price %.2f (site: %s)", value, site_name)
-                return None
-            return value
+        # lelupartanen.fi: bare float in itemprop="Price" content attribute
+        itemprop_price = el.get("content") if el.get("itemprop") == "Price" else None
+        if itemprop_price is None:
+            # also check price element itself
+            itemprop_el = container_el.select_one('[itemprop="Price"]')
+            if itemprop_el:
+                itemprop_price = itemprop_el.get("content")
+        if itemprop_price is not None:
+            try:
+                value = float(itemprop_price)
+            except ValueError:
+                pass
+            else:
+                # Same bounds as every other price path — an attribute placeholder
+                # is no more trustworthy than one printed in the page text.
+                if not within_price_bounds(value, config):
+                    logger.warning("Suspicious attribute price %.2f (site: %s)", value, site_name)
+                    return None
+                return value
 
-    # WooCommerce <ins>/<del>: extract <ins> text only
-    ins_el = el.select_one("ins")
-    if ins_el:
-        el = ins_el
+        # WooCommerce <ins>/<del>: extract <ins> text only
+        ins_el = el.select_one("ins")
+        if ins_el:
+            el = ins_el
 
-    # Strip .visually-hidden spans before reading text
-    for vh in el.select(".visually-hidden"):
-        vh.decompose()
+        # Strip .visually-hidden spans before reading text
+        for vh in el.select(".visually-hidden"):
+            vh.decompose()
 
-    # WooCommerce's price suffix, which tcgkauppa.fi fills with the same price
-    # ex-VAT: "15,90 € <small>12,67 €</small>". Last-token-wins would read the
-    # ex-VAT one, storing every price 25.5 % under what the shop charges.
-    for suffix in el.select(".woocommerce-price-suffix"):
-        suffix.decompose()
+        # WooCommerce's price suffix, which tcgkauppa.fi fills with the same price
+        # ex-VAT: "15,90 € <small>12,67 €</small>". Last-token-wins would read the
+        # ex-VAT one, storing every price 25.5 % under what the shop charges.
+        for suffix in el.select(".woocommerce-price-suffix"):
+            suffix.decompose()
 
-    # Try primary selector text
-    raw = el.get_text()
-    price = parse_price(raw, config)
+        # Try primary selector text
+        raw = el.get_text()
+        price = parse_price(raw, config)
 
-    # Fallback selector (e.g. .price-item--regular when .price-item--sale is absent)
+    # Fallback selector: covers both an empty/unparseable primary match
+    # (e.g. .price-item--sale present but blank) and a primary selector
+    # absent from the DOM entirely (e.g. korttistoppi.fi's .text-sale-price,
+    # which only renders on discounted cards).
     if price is None:
         fallback_sel = _sel(config,"price_fallback")
         if fallback_sel:

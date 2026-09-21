@@ -21,7 +21,8 @@
   "selectors": {
     "product_container": ".product-card-grid-item",
     "product_name": ".product-name-text",
-    "price": ".text-price",
+    "price": ".text-sale-price",
+    "price_fallback": ".text-price",
     "product_url": "a[href*='/tuote/']"
   },
   "availability": {
@@ -39,5 +40,5 @@
     "max_pages": 1
   },
   "confidence": "high",
-  "notes": "Finqu-hosted webshop platform. All 67 products render on a single page - the .pagination widget itself confirms 'Sivu 1 / 1'. Sold-out items show a badge <div class=\"product-badge product-badge-general\"><span class=\"product-badge-content\">Loppunut</span></div> inside .product-media-container; in_stock is left null since the reliable signal is the ABSENCE of that badge (badge text 'Loppunut' = out of stock) rather than a positive in-stock marker - treat presence of '.product-badge-content' with text 'Loppunut' within the container as out-of-stock. Ticket 17: '/tuoteryhma/ennakkotilaus' (singular) is the preorder product group, 12 products at audit time, all Pokémon, though the group is shop-wide and this shop also sells Lorcana and hockey cards. Single page: '/page/2' 404s, and pagination is 'none' here anyway. Ticket 18: '.product-badge-content' carries 'Loppunut' (sold out) and 'Ennakkomyynti' (preorder); no badge means in stock. 5 preorders on the current listing."
+  "notes": "Finqu-hosted webshop platform. All 67 products render on a single page - the .pagination widget itself confirms 'Sivu 1 / 1'. Sold-out items show a badge <div class=\"product-badge product-badge-general\"><span class=\"product-badge-content\">Loppunut</span></div> inside .product-media-container; in_stock is left null since the reliable signal is the ABSENCE of that badge (badge text 'Loppunut' = out of stock) rather than a positive in-stock marker - treat presence of '.product-badge-content' with text 'Loppunut' within the container as out-of-stock. Ticket 17: '/tuoteryhma/ennakkotilaus' (singular) is the preorder product group, 12 products at audit time, all Pokémon, though the group is shop-wide and this shop also sells Lorcana and hockey cards. Single page: '/page/2' 404s, and pagination is 'none' here anyway. Ticket 18: '.product-badge-content' carries 'Loppunut' (sold out) and 'Ennakkomyynti' (preorder); no badge means in stock. 5 preorders on the current listing. 2026-09-21: a discounted product's card drops .text-price entirely and splits into '<span class=\"text-sale-price\">34,90 €</span><span class=\"text-decoration-line-through text-muted\">49,90 €</span>' (current/old); with price pinned to '.text-price' those cards had no matching element, _extract_price returned None, and upsert_listing's NULL-never-overwrites rule (db.py) left latest_price frozen at the pre-sale value forever. price now targets '.text-sale-price' with '.text-price' as price_fallback for non-discounted cards, same pattern as spelparken.se/peliparatiisi.net."
 }

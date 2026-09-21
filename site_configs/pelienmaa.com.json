@@ -12,7 +12,8 @@
   "selectors": {
     "product_container": "div.card-wrapper.product-card-wrapper",
     "product_name": ".card__heading a",
-    "price": ".price-item.price-item--regular",
+    "price": ".price-item.price-item--sale",
+    "price_fallback": ".price-item.price-item--regular",
     "product_url": ".card__heading a"
   },
   "availability": {
@@ -30,5 +31,5 @@
   "decimal_separator": "comma",
   "disabled": false,
   "confidence": "high",
-  "notes": "Shopify Dawn theme. card-wrapper.product-card-wrapper contains each product. Sold-out signal: .price--sold-out class on the price wrapper. Collections are small (8-20 products each), max_pages=3 is a safe ceiling."
+  "notes": "Shopify Dawn theme. card-wrapper.product-card-wrapper contains each product. Sold-out signal: .price--sold-out class on the price wrapper. Collections are small (8-20 products each), max_pages=3 is a safe ceiling. 2026-09-21: price selector was pinned to .price-item--regular with no sale fallback, same bug class fixed on korttistoppi.fi/maxgaming.fi/kodintavaratalo.fi elsewhere in site_configs — on standard Dawn markup a discount moves the live price into .price-item--sale while .price-item--regular becomes (or stays) the struck-through original, so the old selector would have read the pre-sale price through any active discount. No sale was active on this catalog at audit time to confirm live, but this is the same theme family as spelparken.se/peliparatiisi.net, which already use the correct .price-item--sale primary / .price-item--regular price_fallback pairing. Matched that pattern here."
 }

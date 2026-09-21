@@ -653,6 +653,157 @@ def test_scrape_page_spelparken_currency_is_sek():
     assert all(p["currency"] == "SEK" for p in products)
 
 
+# ── scrape_page: korttistoppi.fi (Finqu, discount splits into two spans) ─────
+
+KORTTISTOPPI_CFG = {
+    "site_name": "Korttistoppi",
+    "availability": {
+        "selector": ".product-badge-content",
+        "text_map": {
+            "Loppunut": "out_of_stock",
+            "Ennakkomyynti": "preorder",
+        },
+        "default": "in_stock",
+    },
+    "selectors": {
+        "product_container": ".product-card-grid-item",
+        "product_name": ".product-name-text",
+        "price": ".text-sale-price",
+        "price_fallback": ".text-price",
+        "product_url": "a[href*='/tuote/']",
+    },
+}
+
+
+def test_scrape_page_korttistoppi_sale_price_wins():
+    """Discounted product should return the sale price, not the struck-through original."""
+    html = Path("tests/fixtures/korttistoppi.fi/page1.html").read_text()
+    products = scrape_page(html, KORTTISTOPPI_CFG)
+    discounted = next(p for p in products if "First partner" in p["raw_name"])
+    assert discounted["price"] == 34.90
+
+
+def test_scrape_page_korttistoppi_regular_price_fallback():
+    """Non-discounted product should fall back to the regular .text-price."""
+    html = Path("tests/fixtures/korttistoppi.fi/page1.html").read_text()
+    products = scrape_page(html, KORTTISTOPPI_CFG)
+    regular = next(p for p in products if "Greninja" in p["raw_name"])
+    assert regular["price"] == 58.90
+
+
+def test_scrape_page_korttistoppi_sold_out_detection():
+    html = Path("tests/fixtures/korttistoppi.fi/page1.html").read_text()
+    products = scrape_page(html, KORTTISTOPPI_CFG)
+    sold_out = next(p for p in products if "Zygarde" in p["raw_name"])
+    assert sold_out["availability"] == "out_of_stock"
+
+
+# ── scrape_page: maxgaming.fi (ibutik, PT_PrisKampanj replaces PT_PrisNormal
+#    on a discounted card rather than sitting alongside it) ───────────────────
+
+MAXGAMING_SALE_CFG = {
+    "site_name": "MaxGaming",
+    "decimal_separator": "dot",
+    "selectors": {
+        "product_container": "div.PT_Wrapper",
+        "product_name": ".PT_Beskr",
+        "price": ".PT_PrisKampanj",
+        "price_fallback": ".PT_PrisNormal",
+        "product_url": "a.PT_Lank",
+    },
+}
+
+MAXGAMING_SALE_HTML = """
+<div class="PT_Wrapper">
+  <a class="PT_Lank" href="/fi/produkt/pokemon-dream-painting-box">
+    <div class="PT_Beskr bold">Pokémon<br>151 Dream Painting Water Ecology Figure Blind Collection Box</div>
+  </a>
+  <div class="PT_Pris_Status">
+    <div class="PT_Pris">
+      <span class="PT_PrisKampanj">27.90 €</span>
+      <span class="PT_PrisOrdinarie">(32.90 €)</span>
+    </div>
+  </div>
+</div>
+<div class="PT_Wrapper">
+  <a class="PT_Lank" href="/fi/produkt/pokemon-something-else">
+    <div class="PT_Beskr bold">Pokémon<br>Something Else Booster Box</div>
+  </a>
+  <div class="PT_Pris_Status">
+    <div class="PT_Pris">
+      <span class="PT_PrisNormal">49.90 €</span>
+    </div>
+  </div>
+</div>
+"""
+
+
+def test_scrape_page_maxgaming_discounted_card_reads_kampanj_price():
+    """A discounted card drops PT_PrisNormal entirely; must not read as priceless."""
+    products = scrape_page(MAXGAMING_SALE_HTML, MAXGAMING_SALE_CFG)
+    discounted = next(p for p in products if "Dream Painting" in p["raw_name"])
+    assert discounted["price"] == 27.90
+
+
+def test_scrape_page_maxgaming_regular_card_falls_back_to_normal_price():
+    products = scrape_page(MAXGAMING_SALE_HTML, MAXGAMING_SALE_CFG)
+    regular = next(p for p in products if "Something Else" in p["raw_name"])
+    assert regular["price"] == 49.90
+
+
+# ── scrape_page: kodintavaratalo.fi / porvoonpelikauppa.fi (shared platform;
+#    .normal-price keeps only a struck-through <del> once a card is discounted) ─
+
+DISCOUNT_ENGINE_CFG = {
+    "site_name": "JR Kodintavaratalo",
+    "selectors": {
+        "product_container": "div.card.item-widget",
+        "product_name": "h5.card-title.item-brand",
+        "price": "strong.discounted-price",
+        "price_fallback": "strong.normal-price",
+        "product_url": "a.item-link",
+    },
+}
+
+DISCOUNT_ENGINE_HTML = """
+<div class="card item-widget">
+  <a class="item-link" href="/pokemon-me03-elite-trainer-box">
+    <h5 class="card-title item-brand">Pokemon ME03 Elite Trainer Box</h5>
+  </a>
+  <div class="price-box">
+    <div class="price">
+      <strong class="normal-price"><del>74,95</del></strong>
+      <strong class="discounted-price d-inline-block">63,71 €</strong>
+      <div class="ale-badge">- 15 %</div>
+    </div>
+  </div>
+</div>
+<div class="card item-widget">
+  <a class="item-link" href="/pokemon-booster-box">
+    <h5 class="card-title item-brand">Pokemon Booster Box</h5>
+  </a>
+  <div class="price-box">
+    <div class="price">
+      <strong class="normal-price">37,95 € </strong>
+    </div>
+  </div>
+</div>
+"""
+
+
+def test_scrape_page_discount_engine_reads_discounted_price_not_the_del():
+    """.normal-price now wraps only the struck-through original on a sale card."""
+    products = scrape_page(DISCOUNT_ENGINE_HTML, DISCOUNT_ENGINE_CFG)
+    discounted = next(p for p in products if "Elite Trainer Box" in p["raw_name"])
+    assert discounted["price"] == 63.71
+
+
+def test_scrape_page_discount_engine_regular_card_falls_back_to_normal_price():
+    products = scrape_page(DISCOUNT_ENGINE_HTML, DISCOUNT_ENGINE_CFG)
+    regular = next(p for p in products if "Booster Box" in p["raw_name"])
+    assert regular["price"] == 37.95
+
+
 # ── product_url extraction: anchor-as-container (karukortti.fi) ────────────────
 
 # Mirrors site_configs/karukortti.fi.json — product_url is null because the

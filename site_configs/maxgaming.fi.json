@@ -6,7 +6,8 @@
   "selectors": {
     "product_container": "div.PT_Wrapper",
     "product_name": ".PT_Beskr",
-    "price": ".PT_PrisNormal",
+    "price": ".PT_PrisKampanj",
+    "price_fallback": ".PT_PrisNormal",
     "product_url": "a.PT_Lank"
   },
   "availability": {
@@ -26,5 +27,5 @@
     "max_pages": 4
   },
   "confidence": "high",
-  "notes": "Large general gaming retailer, Pokémon TCG is one category among many. 184 products total, 60 per page ('Näytetään 1-60 yhteensä 184 tuotteesta') => ~4 pages; a 'Seuraava »' link (href /fi/pokemon?page=2) confirms the ?page= query param pattern. product_name (.PT_Beskr) text includes a leading brand line 'Pokémon' plus the actual title on the next line - strip/split if only the title is wanted. Stock status uses a class-coded element .PT_text_Lagerstatus with a numeric 'Lager_N_FI' suffix: Lager_1_FI = 'Varastossa' (in stock), Lager_2_FI = 'Loppu varastosta', Lager_10_FI = 'Loppuunmyyty', Lager_12_FI = 'Tulossa pian' (all effectively not purchasable now) - in_stock selector targets the positive Lager_1_FI class specifically rather than absence of a badge. Ticket 18: '.PT_text_Lagerstatus' carries all four wordings: 'Varastossa', 'Loppuunmyyty', 'Loppu varastosta' and 'Tulossa pian' (preorder, 10 on the current listing)."
+  "notes": "Large general gaming retailer, Pokémon TCG is one category among many. 184 products total, 60 per page ('Näytetään 1-60 yhteensä 184 tuotteesta') => ~4 pages; a 'Seuraava »' link (href /fi/pokemon?page=2) confirms the ?page= query param pattern. product_name (.PT_Beskr) text includes a leading brand line 'Pokémon' plus the actual title on the next line - strip/split if only the title is wanted. Stock status uses a class-coded element .PT_text_Lagerstatus with a numeric 'Lager_N_FI' suffix: Lager_1_FI = 'Varastossa' (in stock), Lager_2_FI = 'Loppu varastosta', Lager_10_FI = 'Loppuunmyyty', Lager_12_FI = 'Tulossa pian' (all effectively not purchasable now) - in_stock selector targets the positive Lager_1_FI class specifically rather than absence of a badge. Ticket 18: '.PT_text_Lagerstatus' carries all four wordings: 'Varastossa', 'Loppuunmyyty', 'Loppu varastosta' and 'Tulossa pian' (preorder, 10 on the current listing). 2026-09-21: a discounted card drops .PT_PrisNormal entirely and renders '<span class=\"PT_PrisKampanj\">27.90 €</span><span class=\"PT_PrisOrdinarie\">(32.90 €)</span>' instead (confirmed live on '151 Dream Painting Water Ecology Figure Blind Collection Box (Chinese)'), so the old selector found nothing on sale cards. price now targets .PT_PrisKampanj with .PT_PrisNormal as price_fallback for non-sale cards. spelexperten.fi is the same ibutik platform (same class names) but is currently disabled, so it was left alone."
 }
