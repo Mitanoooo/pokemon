@@ -758,7 +758,7 @@ DISCOUNT_ENGINE_CFG = {
     "site_name": "JR Kodintavaratalo",
     "selectors": {
         "product_container": "div.card.item-widget",
-        "product_name": "h5.card-title.item-brand",
+        "product_name": ".card-title.item-brand",
         "price": "strong.discounted-price",
         "price_fallback": "strong.normal-price",
         "product_url": "a.item-link",
@@ -768,7 +768,7 @@ DISCOUNT_ENGINE_CFG = {
 DISCOUNT_ENGINE_HTML = """
 <div class="card item-widget">
   <a class="item-link" href="/pokemon-me03-elite-trainer-box">
-    <h5 class="card-title item-brand">Pokemon ME03 Elite Trainer Box</h5>
+    <h3 class="card-title item-brand">Pokemon ME03 Elite Trainer Box</h3>
   </a>
   <div class="price-box">
     <div class="price">
@@ -780,7 +780,7 @@ DISCOUNT_ENGINE_HTML = """
 </div>
 <div class="card item-widget">
   <a class="item-link" href="/pokemon-booster-box">
-    <h5 class="card-title item-brand">Pokemon Booster Box</h5>
+    <h3 class="card-title item-brand">Pokemon Booster Box</h3>
   </a>
   <div class="price-box">
     <div class="price">
@@ -802,6 +802,18 @@ def test_scrape_page_discount_engine_regular_card_falls_back_to_normal_price():
     products = scrape_page(DISCOUNT_ENGINE_HTML, DISCOUNT_ENGINE_CFG)
     regular = next(p for p in products if "Booster Box" in p["raw_name"])
     assert regular["price"] == 37.95
+
+
+def test_scrape_page_discount_engine_name_selector_is_tag_agnostic():
+    """kodintavaratalo.fi switched the title tag from h5 to h3; the selector
+    must match on class alone so a future tag change can't blank every name
+    and collapse all listings onto one (site_id, raw_name) row again."""
+    html_h5 = DISCOUNT_ENGINE_HTML.replace("h3 class", "h5 class").replace("/h3>", "/h5>")
+    products = scrape_page(html_h5, DISCOUNT_ENGINE_CFG)
+    assert {p["raw_name"] for p in products} == {
+        "Pokemon ME03 Elite Trainer Box",
+        "Pokemon Booster Box",
+    }
 
 
 # ── product_url extraction: anchor-as-container (karukortti.fi) ────────────────
