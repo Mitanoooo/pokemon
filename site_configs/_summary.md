@@ -1,6 +1,6 @@
-# Site config summary — all 41 sites (batches 1–8, plus k-ruoka.fi)
+# Site config summary — all 43 sites (batches 1–8, plus k-ruoka.fi, ohmygame.fi, pokekorner.fi)
 
-Confidence counts: **21 high**, **16 medium**, **4 low**.
+Confidence counts: **21 high**, **18 medium**, **4 low**.
 
 ## Config fields the scraper reads
 
@@ -97,8 +97,10 @@ out: `blockhousegames.net`, `ellimadelli.fi`, `godofcards.com`, `muksumassi.fi`,
 - kodintavaratalo.fi — JR Kodintavaratalo
 - lelupartanen.fi — Lelukauppa Partanen
 - muovitukku.fi — Muovitukku
+- ohmygame.fi — Oh My Game
 - pelikrypta.fi — Pelikrypta (Ikamaa)
 - pelimies.fi — Pelimies
+- pokekorner.fi — PokeKorner
 - pokepulls.fi — PokePulls
 - suomalainen.com — Suomalainen.com
 - swagykarp.fi — Swagykarp

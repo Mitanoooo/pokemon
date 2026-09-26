@@ -1,0 +1,33 @@
+{
+  "site_name": "Oh My Game",
+  "source_url": "https://ohmygame.fi/card-games/pokemon/",
+  "method": "css",
+  "fetch_method": "playwright",
+  "playwright_wait_for": "a.product-card",
+  "decimal_separator": "comma",
+  "selectors": {
+    "product_container": "a.product-card",
+    "product_name": ".product-card-title",
+    "price": ".woocommerce-Price-amount",
+    "product_url": null
+  },
+  "availability": {
+    "selector": ".product-card-stock-info .stock",
+    "text_map": {
+      "In stock": "in_stock"
+    },
+    "presence": {
+      "selector": ".single_add_to_cart_button",
+      "present": "in_stock",
+      "absent": "out_of_stock"
+    }
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "medium",
+  "notes": "WooCommerce (custom 'Hoyrymoottori' agency theme) with a JS-rendered product grid — the initial HTML's .product-listing-wrapper is empty and the product cards only exist after a client-side admin-ajax call (action=woocommerce_get_product_cards). Plain fetch returns zero products; playwright with playwright_wait_for on the first rendered card is required. Only 9 Pokemon products currently listed, all under the site's max_amount_per_load of 16, so the 'Show more' button never needs to be triggered and no pagination/click logic is needed. Price format '65,00€' (comma decimal, no space before the symbol). Stock badge text seen is only 'In stock' ('.stock.in-stock'); no out-of-stock example exists among the 9 current listings, so the out_of_stock branch is unverified and falls back to add-to-cart-button presence, per the pelimies.fi pattern. Revisit if the catalogue grows past 16 items or a sold-out item appears."
+}

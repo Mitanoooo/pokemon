@@ -1,6 +1,6 @@
 {
   "site_name": "Muovitukku",
-  "source_url": "https://www.muovitukku.fi/tuote-osasto/lelut/sisalelut/pokemon/",
+  "source_url": "https://www.muovitukku.fi/tuote-osasto/pelit/kerailykortit/",
   "method": "css",
   "availability": {
     "presence": {
@@ -22,5 +22,5 @@
     "max_pages": 1
   },
   "confidence": "medium",
-  "notes": "WooCommerce + Elementor, but the product grid on this category page is rendered by a custom 'tuoteslideri' (product slider/grid) widget rather than the standard WooCommerce ul.products markup - use .tuoteslideri-grid-item as the container, not .product/li.product. 30 products all loaded in the initial DOM on one page (no visible pagination controls or ?page= links found) so treated as a single page. Stock status uses colour-coded meta badges: span.tuoteslideri-meta.is-green (e.g. 'toimitus', 'Saatavilla myymälästä') = in stock/available; span.tuoteslideri-meta.is-red ('Ei saatavilla') = out of stock - both confirmed present in the sample. Price uses WooCommerce's standard .woocommerce-Price-amount markup nested inside .tuoteslideri-price-value, comma decimal separator with a non-breaking space before the € symbol."
+  "notes": "WooCommerce + Elementor, but the product grid on this category page is rendered by a custom 'tuoteslideri' (product slider/grid) widget rather than the standard WooCommerce ul.products markup - use .tuoteslideri-grid-item as the container, not .product/li.product. Stock status uses colour-coded meta badges: span.tuoteslideri-meta.is-green (e.g. 'toimitus', 'Saatavilla myymälästä') = in stock/available; span.tuoteslideri-meta.is-red ('Ei saatavilla') = out of stock. Price uses WooCommerce's standard .woocommerce-Price-amount markup nested inside .tuoteslideri-price-value, comma decimal separator with a non-breaking space before the € symbol; on a sale item the parser reads the discounted (ins) amount. 2026-09-26: source_url changed from /lelut/sisalelut/pokemon/ (toys - plushies, LEGO, figures, costumes, no TCG product at all) to /pelit/kerailykortit/ (the actual sealed TCG category - boosters, ETBs, tins, blisters). No overlap between the two pages' product lists. 39 products, one page, both selectors re-verified against the new page: 100% availability coverage (23 in_stock/16 out_of_stock, both states observed) and correct price extraction. The kerailykortit category is not Pokemon-only - 10 of the 39 current listings are other brands (Topps Match Attax, K-POP Stars, Brainrot, Blueline Liigakortit, UEFA Euro stickers); nothing filters by name so these get scraped in too. One of those, Brainrot keräilykortit S2, is on sale at 1,90 EUR, under the scraper's global MIN_PRICE=2.0 floor, so its price reads as null/rejected by design - a real edge case, not a selector bug."
 }

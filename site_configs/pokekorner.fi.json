@@ -1,0 +1,28 @@
+{
+  "site_name": "PokeKorner",
+  "source_url": "https://www.pokekorner.fi/kauppa/",
+  "method": "css",
+  "decimal_separator": "comma",
+  "selectors": {
+    "product_container": "li.product",
+    "product_name": ".woocommerce-loop-product__title",
+    "price": ".price .woocommerce-Price-amount",
+    "product_url": "a.woocommerce-loop-product__link"
+  },
+  "availability": {
+    "container_class_map": {
+      "instock": "in_stock",
+      "outofstock": "out_of_stock",
+      "onbackorder": "out_of_stock",
+      "unavailable": "out_of_stock"
+    }
+  },
+  "pagination": {
+    "type": "none",
+    "selector": null,
+    "url_pattern": null,
+    "max_pages": 1
+  },
+  "confidence": "medium",
+  "notes": "Standard WooCommerce (Neve theme). Shop is entirely Pokemon TCG, so /kauppa/ (the whole catalogue) doubles as the category page - no filter needed. 28 products, all with 'instock' class directly on li.product, no pagination markup and /kauppa/page/2/ 404s, so this is the full catalogue on one page. Price format '3,00 €' (comma decimal). No outofstock/onbackorder example seen among the current 28 listings, so the out_of_stock branch of container_class_map is unverified; revisit if a sold-out item ever appears. One listing, 'Kotiutus', prices at 0,00 € and reads as a null price by design (probe warns 'Suspicious price 0.00') — it's a non-card checkout line item (likely a custom-amount deposit/return charge), not a scraper bug."
+}
