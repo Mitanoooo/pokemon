@@ -1,6 +1,6 @@
 {
   "site_name": "Prisma.fi",
-  "source_url": "https://www.prisma.fi/kategoriat/1559/kerailykortit-ja-tuotteet?filters=%5B%7B%22onlyInStock%22%3Atrue%7D%2C%7B%22brand%22%3A%22Pok%C3%A9mon+TCG%22%7D%5D",
+  "source_url": "https://www.prisma.fi/kategoriat/1559/kerailykortit-ja-tuotteet?filters=%5B%7B%22brand%22%3A%22Pok%C3%A9mon+TCG%22%7D%2C%7B%22brand%22%3A%22Pokemon%22%7D%2C%7B%22fulfillment%22%3A%7B%22type%22%3A%22delivery%22%7D%7D%5D",
   "method": "css",
   "availability": {
     "selector": ".bg-color-background-error",

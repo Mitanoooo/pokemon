@@ -1,6 +1,6 @@
 {
   "site_name": "Karkkainen.com verkkokauppa",
-  "source_url": "https://www.karkkainen.com/verkkokauppa/kerailykortit?offset=0&facet=attributes.Tuotemerkki%3APokemon&facet=attributes.Saatavuus+myyj%C3%A4lt%C3%A4%3AK%C3%A4rkk%C3%A4inen",
+  "source_url": "https://www.karkkainen.com/verkkokauppa/kerailykortit?offset=0&facet=attributes.Ker%C3%A4ilykortin+sarja%3APokemon+ker%C3%A4ilykortit&facet=attributes.Saatavuus+myyj%C3%A4lt%C3%A4%3AK%C3%A4rkk%C3%A4inen",
   "method": "css",
   "decimal_separator": "dot",
   "availability": {
