@@ -5,14 +5,19 @@ because SSH is blocked from the office network), but requires a bearer
 token on every request instead of being open to anyone who knows the IP.
 
 Endpoints (all require header 'X-Deploy-Token: <token>'):
-  POST /pull    - git pull --ff-only in /opt/pokemon (run as the pokemon user)
-  POST /restart - systemctl restart pokemon-streamlit
-  POST /logs    - last 80 lines of the pokemon-streamlit journal
+  POST /pull       - git pull --ff-only in /opt/pokemon (run as the pokemon user)
+  POST /restart    - systemctl restart pokemon-streamlit
+  POST /logs       - last 80 lines of the pokemon-streamlit journal
+  POST /export-db  - a consistent snapshot of pokemon.db (safe under WAL/concurrent writes)
 """
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import hmac
 import os
+import sqlite3
 import subprocess
+import tempfile
+
+DB_PATH = "/opt/pokemon/pokemon.db"
 
 TOKEN = open("/etc/pokemon-deploy.token").read().strip()
 
@@ -63,6 +68,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.end_headers()
             self.wfile.write(r.stdout.encode())
+        elif path == "export-db":
+            # sqlite's backup API takes a consistent snapshot without stopping
+            # the app or racing its WAL-mode writers.
+            with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
+                src = sqlite3.connect(DB_PATH)
+                dst = sqlite3.connect(tmp.name)
+                src.backup(dst)
+                dst.close()
+                src.close()
+                data = open(tmp.name, "rb").read()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
         else:
             self.send_response(404)
             self.end_headers()

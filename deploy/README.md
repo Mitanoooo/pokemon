@@ -103,6 +103,9 @@ curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/restart
 
 # View recent app logs
 curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/logs
+
+# Download a consistent snapshot of the live database
+curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/export-db -o pokemon.db
 ```
 
 ---
