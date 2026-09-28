@@ -66,6 +66,17 @@ def test_run_site_updates_health_success(conn):
     assert site["last_scraped_at"] is not None
 
 
+def test_run_site_reuses_row_when_source_url_changes(conn):
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>"), \
+         patch("scraper.runner.scrape_page", return_value=_products(1)):
+        run_site(_cfg(source_url="https://example.fi/old/"), conn)
+        run_site(_cfg(source_url="https://example.fi/new/"), conn)
+
+    rows = conn.execute("SELECT * FROM sites WHERE name='Test Shop'").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["url"] == "https://example.fi/new/"
+
+
 # ── run_site: empty page stops pagination ────────────────────────────────────
 
 def test_run_site_stops_on_empty_page(conn):

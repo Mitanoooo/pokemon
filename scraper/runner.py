@@ -28,11 +28,17 @@ def _currency_for(source_url: str) -> str:
 
 def _upsert_site(conn: sqlite3.Connection, config: dict) -> int:
     # A multi-URL config is still one site: its first source URL identifies it.
+    # Identity is the site_name, not the url — url changes when a config gets
+    # repointed, and matching on it orphaned the old row instead of updating it.
     url = source_urls(config)[0]
     name = config["site_name"]
-    row = conn.execute("SELECT id FROM sites WHERE url = ?", (url,)).fetchone()
+    row = conn.execute("SELECT id, url FROM sites WHERE name = ?", (name,)).fetchone()
     if row:
-        return row[0]
+        site_id, existing_url = row
+        if existing_url != url:
+            conn.execute("UPDATE sites SET url = ? WHERE id = ?", (url, site_id))
+            conn.commit()
+        return site_id
     cur = conn.execute("INSERT INTO sites (url, name) VALUES (?, ?)", (url, name))
     conn.commit()
     return cur.lastrowid
