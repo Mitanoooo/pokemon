@@ -1615,3 +1615,83 @@ def test_run_site_a_page_of_new_names_is_not_a_repeat(conn):
 
     names = {r[0] for r in conn.execute("SELECT raw_name FROM listings")}
     assert names == {"A", "B", "C"}
+
+
+# ── detail-page availability ──────────────────────────────────────────────────
+
+DETAIL_BLOCK = {"detail": {
+    "selector": ".stock",
+    "text_map": {"Varastossa": "in_stock", "Loppu": "out_of_stock"},
+    "default": "unknown",
+}}
+
+
+def _detail_listing(name, url):
+    return {"raw_name": name, "price": 9.99, "currency": "EUR",
+            "availability": "unknown", "availability_text": None,
+            "product_url": url}
+
+
+def _run_with_detail_pages(cfg, conn, products, pages):
+    """Run once; `pages` maps product URL to its HTML or to a FetchError."""
+    def fake_fetch(url, config=None):
+        if url == "https://example.fi/shop/":
+            return "<html>listing</html>"
+        page = pages[url]
+        if isinstance(page, Exception):
+            raise page
+        return page
+
+    with patch("scraper.runner.fetch", side_effect=fake_fetch), \
+         patch("scraper.runner.scrape_page", return_value=products), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+
+def test_run_site_reads_availability_from_each_product_page(conn):
+    cfg = _cfg(extra={"availability": DETAIL_BLOCK})
+    products = [_detail_listing("In", "/p/in"), _detail_listing("Out", "/p/out")]
+    pages = {
+        "https://example.fi/p/in": '<p class="stock">Varastossa 3 kpl</p>',
+        "https://example.fi/p/out": '<p class="stock">Loppu</p>',
+    }
+    _run_with_detail_pages(cfg, conn, products, pages)
+
+    rows = {r["raw_name"]: (r["availability"], r["availability_text"])
+            for r in conn.execute("SELECT raw_name, availability, availability_text FROM listings")}
+    assert rows == {"In": ("in_stock", "Varastossa 3 kpl"), "Out": ("out_of_stock", "Loppu")}
+
+
+def test_run_site_reads_unknown_when_a_detail_page_fails_and_keeps_the_rest(conn):
+    cfg = _cfg(extra={"availability": DETAIL_BLOCK})
+    products = [_detail_listing("Bad", "/p/bad"), _detail_listing("Good", "/p/good")]
+    pages = {
+        "https://example.fi/p/bad": FetchError("HTTP 500 for x", 500),
+        "https://example.fi/p/good": '<p class="stock">Varastossa</p>',
+    }
+    _run_with_detail_pages(cfg, conn, products, pages)
+
+    rows = {r["raw_name"]: r["availability"]
+            for r in conn.execute("SELECT raw_name, availability FROM listings")}
+    assert rows == {"Bad": "unknown", "Good": "in_stock"}
+
+
+def test_run_site_detail_page_flip_to_in_stock_emits_back_in_stock(conn):
+    cfg = _cfg(extra={"availability": DETAIL_BLOCK})
+    products = [_detail_listing("Box", "/p/box")]
+    _run_with_detail_pages(cfg, conn, products,
+                           {"https://example.fi/p/box": '<p class="stock">Loppu</p>'})
+    _run_with_detail_pages(cfg, conn, [_detail_listing("Box", "/p/box")],
+                           {"https://example.fi/p/box": '<p class="stock">Varastossa</p>'})
+
+    assert _event_types(conn) == ["back_in_stock"]
+
+
+def test_run_site_fetches_no_detail_pages_without_a_detail_block(conn):
+    cfg = _cfg()
+    with patch("scraper.runner.fetch", return_value="<html>ok</html>") as mock_fetch, \
+         patch("scraper.runner.scrape_page", return_value=[_detail_listing("Box", "/p/box")]), \
+         patch("scraper.runner.time.sleep"):
+        run_site(cfg, conn)
+
+    assert mock_fetch.call_count == 1

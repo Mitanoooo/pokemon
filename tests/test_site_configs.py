@@ -89,6 +89,9 @@ def test_availability_states_are_all_in_the_allowed_set():
         states += [presence[k] for k in ("present", "absent") if presence.get(k)]
         if block.get("absent_means"):
             states.append(block["absent_means"])
+        states += list(((block.get("detail") or {}).get("text_map") or {}).values())
+        if (block.get("detail") or {}).get("default"):
+            states.append(block["detail"]["default"])
         if block.get("default"):
             states.append(block["default"])
         for state in states:
@@ -104,7 +107,7 @@ def test_availability_blocks_configure_at_least_one_form():
 
 
 def test_availability_blocks_have_no_unknown_keys():
-    allowed = set(AVAILABILITY_FORMS) | {"selector", "default", "absent_means"}
+    allowed = set(AVAILABILITY_FORMS) | {"selector", "default", "absent_means", "detail"}
     for path in sorted(CONFIG_DIR.glob("*.json")):
         block = json.loads(path.read_text(encoding="utf-8")).get("availability") or {}
         assert set(block) <= allowed, f"{path.name}: {set(block) - allowed}"

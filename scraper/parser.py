@@ -25,6 +25,11 @@ AVAILABILITY_FORMS = ("text_map", "presence", "container_class_map", "attribute"
 # readings come from.
 AVAILABILITY_ABSENT_MODE = "absent"
 
+# Not a form either: `detail` is a nested availability block that the runner
+# applies to each product's own page, for shops whose listing cards carry no
+# stock signal. It goes in availability_mode for the same reason as "absent".
+AVAILABILITY_DETAIL_MODE = "detail"
+
 # availability_text is stored so a misread badge can be re-diagnosed without
 # re-scraping. 120 chars is enough for "Ennakkotilaus 12.9.2026" and its
 # neighbours without turning listings into a text dump.
@@ -63,15 +68,17 @@ def availability_forms(config: dict) -> Optional[str]:
     which the app reports as "not tracked" rather than as all-unknown. A block
     holding only a `default` tracks nothing either, so it reads as None too.
 
-    `absent_means` is appended as "absent" after the page-reading forms. It is
-    not one of them, but a site that only knows an item is gone because it fell
-    off the page does track availability, and the mode column is where that
-    shows.
+    `absent_means` is appended as "absent" and `detail` as "detail" after the
+    page-reading forms. Neither is one of them, but a site that learns stock from
+    a listing's absence or from each product page does track availability, and
+    the mode column is where that shows.
     """
     block = config.get("availability") or {}
     modes = [f for f in AVAILABILITY_FORMS if block.get(f)]
     if block.get("absent_means"):
         modes.append(AVAILABILITY_ABSENT_MODE)
+    if block.get("detail"):
+        modes.append(AVAILABILITY_DETAIL_MODE)
     return ",".join(modes) or None
 
 
@@ -151,6 +158,21 @@ def detect_availability(
                 return _state(state, config), value[:AVAILABILITY_TEXT_CAP]
 
     return _state(block.get("default", "unknown"), config), None
+
+
+def detail_availability(html: str, config: dict) -> "tuple[str, Optional[str]]":
+    """Return (availability, availability_text) read off one product page.
+
+    The config's `availability.detail` block has the same shape as the top-level
+    block, with the whole page as the container. It is for shops whose listing
+    cards say nothing about stock. Returns ("unknown", None) if the config has
+    no detail block.
+    """
+    block = (config.get("availability") or {}).get("detail")
+    if not block:
+        return "unknown", None
+    detail_config = {"site_name": config.get("site_name", ""), "availability": block}
+    return detect_availability(BeautifulSoup(html, "html.parser"), detail_config)
 
 
 def _extract_price(container_el: Tag, config: dict) -> Optional[float]:

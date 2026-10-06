@@ -16,7 +16,12 @@ from scraper.paginator import (
     source_urls,
     tagged_source_urls,
 )
-from scraper.parser import AVAILABILITY_STATES, availability_forms, scrape_page
+from scraper.parser import (
+    AVAILABILITY_STATES,
+    availability_forms,
+    detail_availability,
+    scrape_page,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -305,6 +310,34 @@ class _EventReporter:
             )
 
 
+def _apply_detail_availability(
+    products: list[dict], source_url: str, config: dict
+) -> None:
+    """Replace each product's availability with what its own page says.
+
+    For configs with an `availability.detail` block, where the listing cards
+    carry no stock signal. One request per product, jittered like pagination. A
+    product whose page cannot be fetched reads unknown: no transition fires from
+    or to unknown, so a failed fetch never reports a restock.
+    """
+    if not (config.get("availability") or {}).get("detail"):
+        return
+
+    site_name = config.get("site_name", source_url)
+    for p in products:
+        url = _absolute_url(source_url, p.get("product_url"))
+        p["availability"], p["availability_text"] = "unknown", None
+        if not url:
+            continue
+        time.sleep(random.uniform(1, 4))
+        try:
+            html = fetch(url, config)
+        except FetchError as exc:
+            logger.warning("%s: detail page failed, reading unknown: %s", site_name, exc)
+            continue
+        p["availability"], p["availability_text"] = detail_availability(html, config)
+
+
 def _scrape_source_url(
     conn: sqlite3.Connection,
     config: dict,
@@ -400,6 +433,9 @@ def _scrape_source_url(
             unclaimed = products
         else:
             unclaimed = [p for p in products if p["raw_name"] not in preorder_claims]
+
+        if not from_preorder_url:
+            _apply_detail_availability(unclaimed, source_url, config)
 
         # Every sighting lands in listings — including price-less ones, so
         # they do not look brand new next run. This must stay ahead of the

@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from scraper.parser import availability_forms, scrape_page
+from scraper.parser import availability_forms, detail_availability, scrape_page
 
 CONFIG_DIR = Path(__file__).parent.parent / "site_configs"
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -103,17 +103,47 @@ def test_prisma_does_not_read_its_whole_page_as_in_stock():
     assert all(p["availability_text"] == "Ei saatavilla" for p in sold_out)
 
 
-def test_karkkainen_reads_its_stock_filtered_page_as_in_stock():
-    """data-ls-availability says OutOfStock on every card, including items its own
-    product pages sell, so the config carries no form. The source URL instead
-    facets on 'Saatavuus myyjältä: Kärkkäinen', so everything listed is in stock
-    and dropping off the page is the shop's only out-of-stock signal."""
-    config = json.loads((CONFIG_DIR / "karkkainen.com.json").read_text(encoding="utf-8"))
-    assert availability_forms(config) == "absent"
+def _karkkainen_config():
+    return json.loads((CONFIG_DIR / "karkkainen.com.json").read_text(encoding="utf-8"))
+
+
+def test_karkkainen_listing_cards_read_unknown_until_the_detail_page_is_read():
+    """Every card says data-ls-availability=OutOfStock, so the listing must not
+    produce a state of its own; the runner overwrites it from the product page."""
+    config = _karkkainen_config()
+    assert availability_forms(config) == "detail"
     html = (FIXTURE_DIR / "karkkainen.com" / "facets.html").read_text(encoding="utf-8")
     products = scrape_page(html, config)
     assert products
-    assert all(p["availability"] == "in_stock" for p in products)
+    assert all(p["availability"] == "unknown" for p in products)
+
+
+@pytest.mark.parametrize("fixture, state, text", [
+    ("detail_in_stock.html", "in_stock", "Vain 1 kpl jäljellä"),
+    ("detail_out_of_stock.html", "out_of_stock", "Saatavilla jälleen 9.10.2026"),
+])
+def test_karkkainen_detail_page_states(fixture, state, text):
+    html = (FIXTURE_DIR / "karkkainen.com" / fixture).read_text(encoding="utf-8")
+    got_state, got_text = detail_availability(html, _karkkainen_config())
+    assert got_state == state
+    assert got_text.startswith(text)
+
+
+@pytest.mark.parametrize("status, state", [
+    ("Saatavilla yli 20 kpl", "in_stock"),
+    ("Saatavilla 11 kpl", "in_stock"),
+    ("Tilaustuote, saatavilla yli 20 kpl", "out_of_stock"),
+    ("Ennakkomyynti 1.12.2026", "preorder"),
+    ("Ei saatavilla verkkokaupassa", "out_of_stock"),
+    ("Jotain aivan uutta", "unknown"),
+])
+def test_karkkainen_detail_status_wordings(status, state):
+    html = f'<div data-testid="product-availability-status"><p>{status}</p></div>'
+    assert detail_availability(html, _karkkainen_config())[0] == state
+
+
+def test_karkkainen_detail_page_without_a_status_block_reads_unknown():
+    assert detail_availability("<html></html>", _karkkainen_config()) == ("unknown", None)
 
 
 def test_karkkainen_facets_keep_the_page_to_pokemon():
