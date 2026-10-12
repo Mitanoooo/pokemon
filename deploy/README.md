@@ -6,33 +6,17 @@
 **App port:** 8502 (Streamlit)
 **Repo:** `https://github.com/Mitanoooo/pokemon.git`
 
-## GitHub authentication (git push from this machine)
+## GitHub authentication (git push from the EC2 dev machine)
 
-The repo remote uses HTTPS. A credential helper reads `$GITHUB_TOKEN` so `git push` works without a password prompt.
-
-**One-time setup (already done on the EC2 dev machine):**
+Global `~/.gitconfig` is the company identity and must never carry a `github.com` credential helper or a `user.*` override for this account. Mitanoooo repos authenticate through repo-local config only:
 
 ```bash
-# 1. Create the credential helper
-cat > ~/.git-credential-github << 'EOF'
-#!/bin/bash
-echo "username=Mitanoooo"
-echo "password=$GITHUB_TOKEN"
-EOF
-chmod +x ~/.git-credential-github
-
-# 2. Tell git to use it for github.com
-git config --global credential.https://github.com.helper ~/.git-credential-github
-
-# 3. Add your PAT to ~/.bashrc (replace the placeholder with the real token)
-echo 'export GITHUB_TOKEN=your_pat_here' >> ~/.bashrc
+git config --local credential.https://github.com.helper 'store --file=/home/ec2-user/.git-credential-mitanoooo-store'
 ```
 
-Then open a new shell (or `source ~/.bashrc`) and `git push` will work.
+The store file holds a Mitanoooo-owned PAT (`repo` scope) as `https://Mitanoooo:<PAT>@github.com`, chmod 600. Remote URLs must not embed a token: an embedded token bypasses credential helpers. New Mitanoooo repos are cloned with `~/mitanoooo/bin/mito-clone`, which sets all of this. See `~/mitanoooo/README.md`.
 
-**If you need to rotate the token:** edit `~/.bashrc`, update `GITHUB_TOKEN`, and `source ~/.bashrc`.
-
-**Required PAT scopes:** `repo` (full control of private repositories).
+To rotate the PAT, replace the store file contents. Do not use the shared `$GITHUB_TOKEN` env var, which resolves to the company account.
 
 ---
 
