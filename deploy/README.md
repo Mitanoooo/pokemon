@@ -22,29 +22,34 @@ To rotate the PAT, replace the store file contents. Do not use the shared `$GITH
 
 > **SSH is blocked by corporate firewall.** There is no SSH access from the office network. Deploys from that network go through the pokemon-scoped HTTP deploy hook below — SSH was only ever needed once, from a machine outside the office network, to do the initial bootstrap (already done). Sessions/automation that already have `~/.ssh/pokemon-hetzner` installed (outside the office network) can instead deploy via direct SSH — see "Deploying via direct SSH" below, which is the method actually used day-to-day so far.
 
-> **Shared server.** The drafter app already runs on this server (port 8501, Caddy on port 80). The pokemon app runs on port 8502 and is reachable at `http://65.21.178.63/pokemon/` via a `handle /pokemon/*` block added to the existing Caddyfile, protected by Caddy `basicauth` (username `pokemon`, password given to the project owner out of band — never store it in this repo) — drafter's root route (`reverse_proxy localhost:8501`) is untouched.
+> **Shared server.** The drafter app runs on this server too (Streamlit on 8501, Caddy on port 80, upload server on 9000). The pokemon app runs on port 8502 and is reachable at `http://65.21.178.63/pokemon/`. Drafter owns `/etc/caddy/Caddyfile`, which imports `/etc/caddy/routes.d/*.caddy` ahead of its catch-all route; pokemon owns `routes.d/pokemon.caddy`, protected by Caddy `basicauth` (username `pokemon`, password in `/root/pokemon-basicauth.txt` on the server; never store it in this repo).
 
-**Status: deployed and live.** The app went live on 2026-08-10; the tracker refocus (tickets 13-20) landed on 2026-09-02. The database is the four tables of the refocus: `sites`, `scrape_runs`, `listings`, `updates`. Mapping, the Cardmarket catalogue, thresholds, price history and the email digest are gone. The old file stays as `pokemon.db.pre-refocus-2026-09-02` (46 MB, all of it `price_readings`); the new one is 1.7 MB.
+**Status: deployed and live.** The app went live on 2026-08-10 and the tracker refocus landed on 2026-09-02. The database is the four tables of the refocus: `sites`, `scrape_runs`, `listings`, `updates`.
 
-Stop the app before the rebuild, and checkpoint the WAL (`PRAGMA wal_checkpoint(TRUNCATE)`) before moving the file. Streamlit holds the database open in WAL mode, so a live `pokemon.db-wal` pairs a stale write-ahead log with whatever file lands under that name next.
+**Data loss on 2026-10-13.** A drafter rebuild (Hetzner `actions/rebuild`) wiped the server's root disk, which then held everything pokemon had: code, database, `.env`, deploy token, systemd units, crontab and the Caddy route. Hetzner backups were off and no snapshot existed, so the database (including the archived pre-refocus price readings) is gone. The app was reinstalled the same day on an empty database.
 
-**Moving the live database to the four-table schema:** `scripts/rebuild_db.py --source pokemon.db --target pokemon.db.new` builds a new database from the old one and prints per-table source and target counts. `init_db.py` cannot do this: it only creates missing tables and indexes, and refuses a database that predates the refocus. Run the rebuild mid-hour (cron scrapes at :00), check the counts, then swap:
+## What survives a server rebuild
 
-```bash
-ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 '
-  cd /opt/pokemon &&
-  sudo -u pokemon git pull --ff-only &&
-  venv/bin/python scripts/rebuild_db.py --source pokemon.db --target pokemon.db.new &&
-  mv pokemon.db pokemon.db.pre-refocus-$(date +%F) &&
-  mv pokemon.db.new pokemon.db &&
-  chown pokemon:pokemon pokemon.db &&
-  systemctl restart pokemon-streamlit
-'
-```
+A rebuild reinstalls Ubuntu on the root disk. Only the Hetzner volume `drafter-data` (`/mnt/drafter-data`) survives, so pokemon keeps its state there:
 
-The `&&` chaining matters: without it a failed rebuild still renames the live database away and swaps in a partial file. The `chown` matters too — the rebuild runs as root, and the app and scraper run as `pokemon`, so a root-owned `pokemon.db` leaves them unable to write.
+| Path on the volume | Linked from | Owner |
+|---|---|---|
+| `pokemon/pokemon.db` | `/opt/pokemon/pokemon.db` | `pokemon` |
+| `pokemon/.env` | `/opt/pokemon/.env` | `pokemon`, mode 600 |
+| `pokemon/secrets/deploy.token` | `/etc/pokemon-deploy.token` | `root`, dir mode 700 |
+| `pokemon/secrets/basicauth.txt` | `/root/pokemon-basicauth.txt` | `root`, dir mode 700 |
 
-The restart is required — the app caches its connection with `st.cache_resource`. The archived `pokemon.db.pre-refocus-*` file is where the old price readings live from then on; nothing reads them.
+`deploy/install_server.sh` rebuilds everything else from the repo: the `pokemon` user, the clone, the venv, both systemd units, the crontab, the Caddy route and the `pokemon-deploy@hetzner` key in root's `authorized_keys`. It is safe to re-run on a live server, which also makes it the repair tool.
+
+After a rebuild:
+
+1. The new server has a new host key: `ssh-keygen -R 65.21.178.63`.
+2. If drafter's cloud-init did not run the pokemon installer, root SSH with `~/.ssh/pokemon-hetzner` fails. Reset the root password through the Hetzner API (`actions/reset_password`) and append `~/.ssh/pokemon-hetzner.pub` to `/root/.ssh/authorized_keys` with it.
+3. Run the installer: `ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 'bash -s' < deploy/install_server.sh`. It should print `health: ok`.
+
+Hetzner backups are still off for the server. Download a snapshot with `/export-db` (below) before any operation on the server that could destroy data.
+
+Stop the app and checkpoint the WAL (`PRAGMA wal_checkpoint(TRUNCATE)`) before moving or replacing the database file. Streamlit holds it open in WAL mode, so a live `pokemon.db-wal` pairs a stale write-ahead log with whatever file lands under that name next. Replace the file on the volume, not the symlink in `/opt/pokemon`. The restart is required because the app caches its connection with `st.cache_resource`.
 
 > **Gotcha — don't rename `app/views/` back to `app/pages/`.** Streamlit auto-detects any folder literally named `pages/` sibling to the entrypoint as its own multi-page-app router, which registers each page as a standalone top-level route bypassing `main.py`'s custom router (the thing that sets up `st.session_state["conn"]`). Doing so silently breaks every page with a "No database connection." error. The folder is intentionally named `app/views/` for this reason.
 
@@ -94,79 +99,13 @@ curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/export-db -o 
 
 ---
 
-## First-Time Setup (Full Deploy) — reference only, already completed
+## First-time setup
 
-### 1. Clone the repo
+`deploy/install_server.sh` does the whole setup; see "What survives a server rebuild" above. It needs drafter's setup first (the mounted volume, Caddy with the `routes.d` import, `python3-venv`, `git`). After it runs, set `DISCORD_WEBHOOK_URL` in `/mnt/drafter-data/pokemon/.env`; cron reads it on the next scrape.
 
-```bash
-cd /opt/pokemon
-git clone https://github.com/Mitanoooo/pokemon.git .
-```
+Use `handle` (not `handle_path`) for the Caddy route. `handle_path` strips the `/pokemon` prefix, which breaks Streamlit's `--server.baseUrlPath pokemon` (symptom: basic auth passes, then 404).
 
-### 2. Create the virtualenv and install dependencies
-
-```bash
-python3 -m venv /opt/pokemon/venv
-/opt/pokemon/venv/bin/pip install --upgrade pip
-/opt/pokemon/venv/bin/pip install -r requirements.txt
-```
-
-### 3. Create the .env file
-
-```bash
-cp /opt/pokemon/.env.example /opt/pokemon/.env
-# Edit DB_PATH.
-```
-
-### 4. Initialise the database
-
-```bash
-cd /opt/pokemon
-venv/bin/python init_db.py
-```
-
-### 5. Install the systemd service
-
-```bash
-cp /opt/pokemon/deploy/pokemon-streamlit.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable pokemon-streamlit
-systemctl start pokemon-streamlit
-```
-
-Verify it's listening:
-
-```bash
-curl -s http://localhost:8502/pokemon/_stcore/health
-# Should return: ok
-```
-
-### 6. Configure reverse proxy and basic auth
-
-The app runs on port 8502. Port 80 is already handled by the drafter **Caddy** instance (not nginx) — add a `handle /pokemon/*` block to the existing `/etc/caddy/Caddyfile` (back up the original first), then `systemctl reload caddy` (reload, not restart, so drafter's root route has zero downtime):
-
-```caddyfile
-handle /pokemon/* {
-    basicauth {
-        pokemon <bcrypt-hash>
-    }
-    reverse_proxy localhost:8502
-}
-```
-
-Generate the bcrypt hash with `caddy hash-password --plaintext '<password>'`. Do **not** install a second nginx `server {}` block on port 80, and use `handle` (not `handle_path`) — `handle_path` strips the `/pokemon` prefix, which breaks Streamlit's `--server.baseUrlPath pokemon` (symptom: basic auth passes, then 404).
-
-### 7. Add the crontab
-
-The scraper cron belongs to the **`pokemon`** user, not root. `crontab -l` as root shows nothing.
-
-```bash
-crontab -e -u pokemon
-# or install the repo file verbatim:
-ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 'crontab -u pokemon -' < deploy/crontab.txt
-```
-
-Contents (all times UTC):
+The scraper cron belongs to the **`pokemon`** user, not root; `crontab -l` as root shows nothing. Contents (all times UTC):
 
 ```
 */20 * * * *  cd /opt/pokemon && venv/bin/python -m scraper >> logs/scraper.log 2>&1
@@ -184,7 +123,7 @@ Contents (all times UTC):
 | Pull latest code (direct SSH) | `ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 'cd /opt/pokemon && sudo -u pokemon git pull --ff-only && systemctl restart pokemon-streamlit'` |
 | Pull latest code (HTTP hook, from office network) | `curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/pull` then `.../restart` |
 | Run scraper manually | `cd /opt/pokemon && venv/bin/python -m scraper` |
-| Rebuild the DB from an older schema | `cd /opt/pokemon && venv/bin/python scripts/rebuild_db.py --source pokemon.db --target pokemon.db.new` |
+| Reinstall or repair after a server rebuild | `ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 'bash -s' < deploy/install_server.sh` |
 
 ---
 
@@ -195,8 +134,8 @@ Contents (all times UTC):
 | App not responding | `curl http://localhost:8502/pokemon/_stcore/health` → should be `ok`. The `pokemon` prefix is required: the service runs with `--server.baseUrlPath pokemon`, so the bare path 404s |
 | Every page shows "No database connection." | Check the page-source folder is `app/views/`, not `app/pages/` — see the MPA gotcha above |
 | Scraper returns 0 products | Check `tail -20 /opt/pokemon/logs/scraper.log`; site may have changed selectors |
-| App errors on a missing column | The database predates the four-table schema — run `scripts/rebuild_db.py` and swap the file |
 | Service not starting | `journalctl -u pokemon-streamlit -n 50` |
+| `/pokemon/` serves drafter or 404s | `/etc/caddy/Caddyfile` lost its `import /etc/caddy/routes.d/*.caddy` line (drafter rewrote it); restore it and `systemctl reload caddy` |
 
 ---
 
@@ -215,11 +154,7 @@ curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/pull
 curl -X POST -H "X-Deploy-Token: <token>" http://65.21.178.63:9001/restart
 ```
 
-**First-time deploy checklist**
-- [ ] Clone repo to `/opt/pokemon`
-- [ ] Create venv and install requirements
-- [ ] Create `.env` with `DB_PATH`
-- [ ] Run `init_db.py`
-- [ ] Install and start `pokemon-streamlit` systemd service
-- [ ] Add crontab entries
-- [ ] Verify app at `http://localhost:8502/pokemon/_stcore/health`
+**Reinstall or repair the server**
+```bash
+ssh -i ~/.ssh/pokemon-hetzner root@65.21.178.63 'bash -s' < deploy/install_server.sh
+```
